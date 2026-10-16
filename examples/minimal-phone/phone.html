@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>tv-voice-bridge: phone mic</title>
+    <style>
+      body { margin: 0; padding: 20px; background: #0b0d11; color: #f4f6f8; font: 18px/1.4 system-ui, sans-serif; }
+      button { font: inherit; font-size: 22px; padding: 18px; width: 100%; border: 0; border-radius: 14px; background: #ffcf33; color: #111; margin: 12px 0; }
+      input { font: inherit; width: 100%; box-sizing: border-box; padding: 12px; border-radius: 10px; border: 2px solid #283140; background: #12161d; color: inherit; }
+      #status, #lat { color: #9aa4b2; }
+    </style>
+  </head>
+  <body>
+    <div id="status">connecting…</div>
+    <button id="mic">🎙 Hold the phone up and tap to talk</button>
+    <form id="f"><input id="t" placeholder="…or type what you would say" /></form>
+    <div id="lat"></div>
+    <script type="module">
+      import { BridgeClient, latency } from '/lib/index.js';
+      const $ = (id) => document.getElementById(id);
+      const code = location.pathname.split('/p/')[1];
+      const phone = new BridgeClient({ url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`, role: 'mic', code });
+      phone.on('ack', (a) => ($('lat').textContent = `speech end → TV render: ${latency(a.hops).span('speech.end', 'screen.render')} ms`));
+      phone.connect().then(() => ($('status').textContent = `paired with ${code}`), (e) => ($('status').textContent = String(e)));
+      $('f').onsubmit = (e) => { e.preventDefault(); phone.sendFinal($('t').value, { speechEndAt: performance.timeOrigin + performance.now() }); $('t').value = ''; };
+      // Web Speech needs a secure context (https or localhost) and Chrome/Safari
+      const SR = window.SpeechRecognition ?? window.webkitSpeechRecognition;
+      if (!SR) $('mic').disabled = true;
+      $('mic').onclick = () => {
+        const rec = new SR(); rec.interimResults = true; const id = `utt_${Date.now()}`; let end = 0;
+        rec.onspeechend = () => (end = performance.timeOrigin + performance.now());
+        rec.onresult = (e) => { const r = e.results[e.results.length - 1]; r.isFinal ? phone.sendFinal(r[0].transcript, { utteranceId: id, speechEndAt: end || undefined }) : phone.sendPartial(r[0].transcript, id); };
+        rec.start();
+      };
+    </script>
+  </body>
+</html>

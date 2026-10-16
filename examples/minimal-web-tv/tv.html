@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>tv-voice-bridge: minimal TV</title>
+    <style>
+      body { margin: 0; background: #0b0d11; color: #f4f6f8; font: 32px/1.4 system-ui, sans-serif; padding: 54px 96px; }
+      #code { font-size: 120px; font-weight: 800; letter-spacing: 24px; }
+      #heard { font-size: 64px; font-weight: 700; margin-top: 40px; min-height: 90px; }
+      #partial { color: #9aa4b2; font-style: italic; min-height: 50px; }
+      #say { color: #ffcf33; margin-top: 40px; min-height: 50px; }
+      small { color: #6b7684; }
+    </style>
+  </head>
+  <body>
+    <small>Open this on the phone (same Wi-Fi):</small>
+    <div id="join">connecting…</div>
+    <div id="code">····</div>
+    <div id="partial"></div>
+    <div id="heard">Say something into the phone.</div>
+    <div id="say"></div>
+    <small>Press any key once so the browser allows speech.</small>
+    <script type="module">
+      import { BridgeClient } from '/lib/index.js';
+      const $ = (id) => document.getElementById(id);
+      const tv = new BridgeClient({ url: `ws://${location.host}/ws`, role: 'screen', code: sessionStorage.getItem('code') ?? undefined });
+      tv.on('welcome', (w) => { sessionStorage.setItem('code', w.code); $('code').textContent = w.code; $('join').textContent = w.joinUrl; });
+      tv.on('transcript.partial', (m) => ($('partial').textContent = m.text));
+      tv.on('intent', (m) => {
+        const receivedAt = performance.timeOrigin + performance.now();
+        $('partial').textContent = '';
+        $('heard').textContent = `“${m.payload.text}”`;
+        requestAnimationFrame(() => tv.ack(m, { receivedAt })); // after the frame that shows it
+      });
+      // TV -> room speech: play the clip if there is one, otherwise speak the text; caption it either way
+      tv.onSay((line) => {
+        $('say').textContent = line.text;
+        tv.reportSay({ id: line.id, state: 'playing' });
+        const done = () => tv.reportSay({ id: line.id, state: 'ended' });
+        if (line.audioUrl) { const a = new Audio(line.audioUrl); a.onended = done; a.play().catch(() => tv.reportSay({ id: line.id, state: 'error' })); return; }
+        if (line.priority === 'high') speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(line.text); u.onend = done; speechSynthesis.speak(u);
+      });
+      tv.connect();
+    </script>
+  </body>
+</html>
