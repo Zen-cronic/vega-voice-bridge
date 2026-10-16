@@ -1,0 +1,80 @@
+{
+  "name": "@rackboard/tv-voice-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The phone is the microphone (and the TV is the speaker) for TV apps: pairing codes, a tiny WebSocket protocol, a hub and a client with per-hop latency stamps. Built for Fire TV Vega OS, which has no third-party mic API.",
+  "license": "MIT",
+  "author": "Kaung Zin Hein",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./client": {
+      "source": "./src/client.ts",
+      "types": "./dist/client.d.ts",
+      "default": "./dist/client.js"
+    },
+    "./hub": {
+      "source": "./src/hub.ts",
+      "types": "./dist/hub.d.ts",
+      "default": "./dist/hub.js"
+    },
+    "./protocol": {
+      "source": "./src/protocol.ts",
+      "types": "./dist/protocol.d.ts",
+      "default": "./dist/protocol.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "clean": "rm -rf dist *.tgz",
+    "prepack": "npm run build"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "fire-tv",
+    "vega",
+    "react-native",
+    "tv",
+    "voice",
+    "microphone",
+    "websocket",
+    "companion-app",
+    "10-foot"
+  ],
+  "peerDependencies": {
+    "ws": "^8"
+  },
+  "peerDependenciesMeta": {
+    "ws": {
+      "optional": true
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/ws": "^8.18.2",
+    "typescript": "^5.9.0",
+    "vitest": "^5.0.4",
+    "ws": "^8.22.0"
+  }
+}

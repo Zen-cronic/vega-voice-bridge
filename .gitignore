@@ -1,0 +1,21 @@
+node_modules/
+dist/
+coverage/
+*.tgz
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store
+
+# Local tooling and notes
+*.tsbuildinfo
+.playwright-mcp/
+.claude/
+.codex/
+.agents/
+.vscode/
+.idea/
+notes.md
+CLAUDE.md
+AGENTS.md
