@@ -1,9 +1,11 @@
+import { MessageAssembler } from './framing.js';
 import {
   PROTOCOL_VERSION,
-  decode,
   encode,
   newId,
+  newToken,
   type BridgeMessage,
+  type ErrorMsg,
   type Hop,
   type IntentMsg,
   type MessageOf,
@@ -27,105 +29,335 @@ type WSLike = {
   onmessage: ((ev: { data: unknown }) => void) | null;
 };
 
+export interface ReconnectOptions {
+  /** First retry delay. Default 250 ms. */
+  minDelayMs?: number;
+  /** Delays double up to this cap. Default 10 s. */
+  maxDelayMs?: number;
+  /** Share of each delay that is random (0 = none, 1 = full jitter). Default 0.5. */
+  jitter?: number;
+  /**
+   * After a reconnect is answered `unknown-code` (the hub restarted and the TV has not re-created its room yet),
+   * keep retrying this long, then stop with status `repair`. Default 60 s.
+   */
+  repairAfterMs?: number;
+}
+
+export const DEFAULT_RECONNECT: Readonly<Required<ReconnectOptions>> = { minDelayMs: 250, maxDelayMs: 10_000, jitter: 0.5, repairAfterMs: 60_000 };
+
+/** Capped exponential backoff with jitter: attempt 0 waits about `minDelayMs`, doubling up to `maxDelayMs`. */
+export function backoffDelay(attempt: number, o: ReconnectOptions = {}, rand: () => number = Math.random): number {
+  const { minDelayMs, maxDelayMs, jitter } = { ...DEFAULT_RECONNECT, ...o };
+  const base = Math.min(maxDelayMs, minDelayMs * 2 ** Math.min(Math.max(0, attempt), 30));
+  const j = Math.max(0, Math.min(1, jitter));
+  return Math.round(base * (1 - j) + base * j * rand());
+}
+
 export interface ClientOptions {
   url: string;
   role: Role;
   code?: string;
   name?: string;
   clientId?: string;
+  /**
+   * Secret that proves this client owns `clientId` when it reconnects while the hub still holds the old connection.
+   * Generated per instance. Persist it next to a persisted `clientId` to keep the id across page reloads. Never show or log it.
+   */
+  resumeToken?: string;
   /** Browser/Node 22+ have a global WebSocket; pass one otherwise. */
   WebSocketImpl?: new (url: string) => WSLike;
-  reconnect?: boolean;
+  /** Keep the connection up until `close()`: on by default. `false` makes one attempt and never retries. */
+  reconnect?: boolean | ReconnectOptions;
   /** Clock samples for the hub offset estimate. */
   clockSamples?: number;
+  /** Send a ping this often while connected. 0 disables the heartbeat. Default 10 s. */
+  heartbeatMs?: number;
+  /** Treat the link as dead after this long without any data from the hub, even if `onclose` never fires. Default 25 s. */
+  heartbeatTimeoutMs?: number;
+  /** Abandon an attempt that has not been welcomed after this long. 0 disables. Default 10 s. */
+  connectTimeoutMs?: number;
+  /** Largest message reassembled from split frames. Default 1 MiB. */
+  maxMessageBytes?: number;
+  /** Called when one of your event handlers throws. Default: console.error. */
+  onHandlerError?: (err: unknown, event: string) => void;
+}
+
+export type ConnectionStatus = 'idle' | 'connecting' | 'open' | 'reconnecting' | 'repair' | 'closed';
+
+/** Client lifecycle events (in addition to one event per received message type). */
+export interface ClientEvents {
+  /** Welcomed into a room (first connect and every reconnect). */
+  open: () => void;
+  /** A socket went away (closed, failed, or found dead by the heartbeat). */
+  close: () => void;
+  /** A retry is scheduled. */
+  reconnecting: (info: { attempt: number; delayMs: number; reason: string }) => void;
+  /** The room's code stopped working (the TV is gone). Show "pair again"; then set `code` and call `connect()`. */
+  repair: (info: { code: string | undefined; reason: string }) => void;
+  status: (status: ConnectionStatus) => void;
 }
 
 type Handler<T extends MessageType> = (m: MessageOf<T>) => void;
+type AnyHandler = (arg?: unknown) => void;
 
-/** Framework-agnostic client for both roles. Works in browsers, React Native and Node. */
+const timeOrigin = (): number =>
+  typeof performance.timeOrigin === 'number' && performance.timeOrigin > 0 ? performance.timeOrigin : Date.now() - performance.now();
+/** Local epoch milliseconds from the monotonic clock. */
+const localNow = (): number => timeOrigin() + performance.now();
+
+function errorText(err: unknown): string {
+  try {
+    return err instanceof Error ? err.message : String(err);
+  } catch {
+    return 'unknown error';
+  }
+}
+
+/**
+ * Framework-agnostic client for both roles. Works in browsers, React Native (including Vega) and Node.
+ * It keeps the connection up until `close()`: backoff with jitter, a heartbeat that detects dead links when
+ * `onclose` never fires, re-joining after a hub restart, and reassembly of messages split across frames.
+ */
 export class BridgeClient {
   readonly clientId: string;
+  readonly resumeToken: string;
   code: string | undefined;
-  /** hub clock - local clock, from the best (lowest RTT) ping sample */
+  /** hub clock - local clock, from the best (lowest RTT) ping sample of the current connection */
   offsetMs = 0;
   rttMs: number | null = null;
   connected = false;
+  status: ConnectionStatus = 'idle';
   private ws: WSLike | null = null;
-  private handlers = new Map<string, Set<(m: BridgeMessage) => void>>();
-  private closedByUser = false;
-  private retry = 0;
+  private handlers = new Map<string, Set<AnyHandler>>();
+  private want = false;
+  private everWelcomed = false;
+  private attempt = 0;
+  private repairSince: number | null = null;
   private bestRtt = Infinity;
+  private lastRecv = 0;
+  private lastWelcome: WelcomeMsg | null = null;
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  private connectTimer: ReturnType<typeof setTimeout> | null = null;
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private waiters: Array<{ resolve: (w: WelcomeMsg) => void; reject: (e: Error) => void }> = [];
+  private readonly assembler: MessageAssembler;
+  private readonly retry: Required<ReconnectOptions> | null;
 
   constructor(private readonly opts: ClientOptions) {
     this.clientId = opts.clientId ?? newId(opts.role);
+    this.resumeToken = opts.resumeToken ?? newToken();
     this.code = opts.code;
+    this.retry = opts.reconnect === false ? null : { ...DEFAULT_RECONNECT, ...(typeof opts.reconnect === 'object' ? opts.reconnect : {}) };
+    this.assembler = new MessageAssembler({ maxBytes: opts.maxMessageBytes });
   }
 
-  on<T extends MessageType>(type: T | 'open' | 'close', fn: Handler<T> | (() => void)): () => void {
+  on<T extends MessageType>(type: T, fn: Handler<T>): () => void;
+  on<E extends keyof ClientEvents>(type: E, fn: ClientEvents[E]): () => void;
+  on(type: string, fn: (arg: never) => void): () => void {
     const set = this.handlers.get(type) ?? new Set();
-    set.add(fn as (m: BridgeMessage) => void);
+    set.add(fn as AnyHandler);
     this.handlers.set(type, set);
-    return () => set.delete(fn as (m: BridgeMessage) => void);
+    return () => set.delete(fn as AnyHandler);
   }
 
-  private emit(type: string, m?: BridgeMessage) {
-    for (const fn of this.handlers.get(type) ?? []) fn(m as BridgeMessage);
+  private emit(type: string, arg?: unknown) {
+    for (const fn of [...(this.handlers.get(type) ?? [])]) {
+      try {
+        fn(arg);
+      } catch (err) {
+        try {
+          if (this.opts.onHandlerError) this.opts.onHandlerError(err, type);
+          else globalThis.console?.error?.(`tv-voice-bridge: a "${type}" handler threw`, err);
+        } catch {
+          // nothing left to report to
+        }
+      }
+    }
+  }
+
+  private setStatus(s: ConnectionStatus) {
+    if (this.status === s) return;
+    this.status = s;
+    this.emit('status', s);
   }
 
   /** Local time mapped to hub clock. */
   now(): number {
-    return performance.timeOrigin + performance.now() + this.offsetMs;
+    return localNow() + this.offsetMs;
   }
 
   hop(name: string): Hop {
     return { hop: name, at: this.now() };
   }
 
+  /**
+   * Connect and resolve on the first `welcome`. The promise rejects if this attempt fails; with `reconnect` on
+   * (the default) the client keeps retrying in the background and fires `open` when it gets in. Fatal answers
+   * stop it: `version`, `id-in-use`, a refused hello, and `unknown-code` on a first pairing.
+   */
   connect(): Promise<WelcomeMsg> {
-    this.closedByUser = false;
-    const WS = this.opts.WebSocketImpl ?? (globalThis as unknown as { WebSocket: new (url: string) => WSLike }).WebSocket;
-    return new Promise((resolve, reject) => {
-      const ws = new WS(this.opts.url);
-      this.ws = ws;
-      let welcomed = false;
-      ws.onopen = () => {
-        this.send({ type: 'hello', v: PROTOCOL_VERSION, role: this.opts.role, clientId: this.clientId, code: this.code, name: this.opts.name });
-      };
-      ws.onmessage = (ev) => {
-        const m = decode(String(ev.data));
-        if (!m) return;
-        if (m.type === 'welcome') {
-          welcomed = true;
-          this.connected = true;
-          this.code = m.code;
-          this.retry = 0;
-          this.offsetMs = m.serverTime - (performance.timeOrigin + performance.now());
-          void this.syncClock();
-          resolve(m);
-          this.emit('open');
-        }
-        if (m.type === 'pong') this.onPong(m);
-        if (m.type === 'error' && !welcomed) reject(new Error(`${m.code}: ${m.message}`));
-        this.emit(m.type, m);
-      };
-      ws.onerror = () => {
-        if (!welcomed) reject(new Error(`cannot connect to ${this.opts.url}`));
-      };
-      ws.onclose = () => {
-        this.connected = false;
-        this.emit('close');
-        if (!this.closedByUser && this.opts.reconnect !== false && welcomed) {
-          const delay = Math.min(5000, 250 * 2 ** this.retry++);
-          setTimeout(() => this.connect().catch(() => undefined), delay);
-        }
-      };
+    return new Promise<WelcomeMsg>((resolve, reject) => {
+      if (this.connected && this.lastWelcome) return resolve(this.lastWelcome);
+      this.waiters.push({ resolve, reject });
+      if (this.status === 'idle' || this.status === 'closed' || this.status === 'repair') this.everWelcomed = false;
+      this.want = true;
+      if (this.ws) return; // an attempt is already in flight
+      this.clearRetry();
+      this.attempt = 0;
+      this.repairSince = null;
+      this.open();
     });
   }
 
+  private open() {
+    this.clearSocketTimers();
+    this.setStatus(this.attempt === 0 && !this.everWelcomed ? 'connecting' : 'reconnecting');
+    const url = this.opts.url;
+    let ws: WSLike;
+    try {
+      const WS = this.opts.WebSocketImpl ?? (globalThis as unknown as { WebSocket?: new (url: string) => WSLike }).WebSocket;
+      if (!WS) throw new Error('no WebSocket implementation; pass WebSocketImpl');
+      ws = new WS(url);
+    } catch (err) {
+      this.drop(null, `cannot connect to ${url}: ${errorText(err)}`);
+      return;
+    }
+    this.ws = ws;
+    this.assembler.reset();
+    const connectTimeout = this.opts.connectTimeoutMs ?? 10_000;
+    if (connectTimeout > 0) this.connectTimer = setTimeout(() => this.drop(ws, `no welcome from ${url} within ${connectTimeout} ms`), connectTimeout);
+    ws.onopen = () => {
+      if (this.ws !== ws) return;
+      this.lastRecv = localNow();
+      this.send({ type: 'hello', v: PROTOCOL_VERSION, role: this.opts.role, clientId: this.clientId, code: this.code, name: this.opts.name, resumeToken: this.resumeToken });
+      this.startHeartbeat(ws);
+    };
+    ws.onmessage = (ev) => {
+      if (this.ws !== ws) return;
+      this.lastRecv = localNow();
+      const batch = this.assembler.push(typeof ev.data === 'string' ? ev.data : String(ev.data));
+      for (const m of batch.messages) {
+        if (this.ws !== ws) break;
+        this.receive(ws, m);
+      }
+    };
+    ws.onerror = () => {
+      if (this.ws === ws) this.drop(ws, this.connected ? 'socket error' : `cannot connect to ${url}`);
+    };
+    ws.onclose = () => {
+      if (this.ws === ws) this.drop(ws, this.connected ? 'connection closed' : `connection to ${url} closed before welcome`);
+    };
+  }
+
+  private receive(ws: WSLike, m: BridgeMessage) {
+    if (m.type === 'welcome') {
+      if (this.connectTimer) clearTimeout(this.connectTimer);
+      this.connectTimer = null;
+      this.connected = true;
+      this.everWelcomed = true;
+      this.attempt = 0;
+      this.repairSince = null;
+      this.code = m.code;
+      this.lastWelcome = m;
+      // A new connection is a new network path: forget the old best sample, start from the welcome estimate.
+      this.bestRtt = Infinity;
+      this.rttMs = null;
+      this.offsetMs = m.serverTime - localNow();
+      this.setStatus('open');
+      void this.syncClock();
+      for (const w of this.waiters.splice(0)) w.resolve(m);
+      this.emit('open');
+    } else if (m.type === 'pong') {
+      this.onPong(m);
+    } else if (m.type === 'error' && !this.connected) {
+      this.refused(ws, m);
+    }
+    this.emit(m.type, m);
+  }
+
+  /** The hub refused the hello. Decide whether to retry. */
+  private refused(ws: WSLike, m: ErrorMsg) {
+    const reason = `${m.code}: ${m.message}`;
+    if (m.code === 'unknown-code' && this.everWelcomed && this.retry) {
+      // A reconnect after a hub restart can land before the TV re-creates its room: keep trying for a while.
+      this.repairSince ??= localNow();
+      return this.drop(ws, reason);
+    }
+    if (m.code === 'rate-limited' || m.code === 'full') return this.drop(ws, reason, { minDelayMs: m.retryAfterMs });
+    this.drop(ws, reason, { fatal: true });
+  }
+
+  /** Abandon a socket (idempotent per socket), then retry, stop, or ask for re-pairing. */
+  private drop(ws: WSLike | null, reason: string, o: { fatal?: boolean; minDelayMs?: number } = {}) {
+    if (ws && this.ws !== ws) return;
+    this.detach(ws);
+    this.ws = null;
+    this.connected = false;
+    for (const w of this.waiters.splice(0)) w.reject(new Error(reason));
+    if (ws) this.emit('close');
+    if (o.fatal || !this.want || !this.retry) {
+      this.want = false;
+      this.setStatus('closed');
+      return;
+    }
+    if (this.repairSince !== null && localNow() - this.repairSince >= this.retry.repairAfterMs) {
+      this.want = false;
+      this.setStatus('repair');
+      this.emit('repair', { code: this.code, reason });
+      return;
+    }
+    const delayMs = Math.max(o.minDelayMs ?? 0, backoffDelay(this.attempt++, this.retry));
+    this.setStatus('reconnecting');
+    this.emit('reconnecting', { attempt: this.attempt, delayMs, reason });
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null;
+      if (this.want && !this.ws) this.open();
+    }, delayMs);
+  }
+
+  private detach(ws: WSLike | null) {
+    this.clearSocketTimers();
+    if (!ws) return;
+    const noop = () => undefined;
+    ws.onopen = noop;
+    ws.onmessage = noop;
+    ws.onerror = noop;
+    ws.onclose = noop;
+    try {
+      if (ws.readyState === 0 || ws.readyState === 1) ws.close();
+    } catch {
+      // already gone
+    }
+  }
+
+  private startHeartbeat(ws: WSLike) {
+    const every = this.opts.heartbeatMs ?? 10_000;
+    if (!(every > 0)) return;
+    const timeout = this.opts.heartbeatTimeoutMs ?? Math.max(every * 2.5, every + 5_000);
+    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+    this.heartbeatTimer = setInterval(() => {
+      if (this.ws !== ws) return;
+      if (localNow() - this.lastRecv > timeout) return this.drop(ws, `no data from the hub for ${Math.round(timeout)} ms`);
+      this.send({ type: 'ping', t0: localNow() });
+    }, every);
+  }
+
+  private clearSocketTimers() {
+    if (this.connectTimer) clearTimeout(this.connectTimer);
+    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+    this.connectTimer = null;
+    this.heartbeatTimer = null;
+  }
+
+  private clearRetry() {
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.retryTimer = null;
+  }
+
   private onPong(m: MessageOf<'pong'>) {
-    const t1 = performance.timeOrigin + performance.now();
+    const t1 = localNow();
     const rtt = t1 - m.t0;
-    if (rtt < this.bestRtt) {
+    if (rtt >= 0 && rtt < this.bestRtt) {
       this.bestRtt = rtt;
       this.rttMs = Math.round(rtt);
       this.offsetMs = m.serverTime + rtt / 2 - t1;
@@ -134,13 +366,20 @@ export class BridgeClient {
 
   async syncClock(samples = this.opts.clockSamples ?? 5): Promise<void> {
     for (let i = 0; i < samples; i++) {
-      this.send({ type: 'ping', t0: performance.timeOrigin + performance.now() });
+      if (!this.send({ type: 'ping', t0: localNow() })) return;
       await new Promise((r) => setTimeout(r, 40));
     }
   }
 
-  send(m: BridgeMessage) {
-    if (this.ws && this.ws.readyState === 1) this.ws.send(encode(m));
+  /** Send a message now. Returns false when not connected (nothing is queued). */
+  send(m: BridgeMessage): boolean {
+    if (!this.ws || this.ws.readyState !== 1) return false;
+    try {
+      this.ws.send(encode(m));
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /** Mic: send a final transcript. speechEndAt is local (performance.timeOrigin + now) time of speech end. */
@@ -188,13 +427,21 @@ export class BridgeClient {
     });
   }
 
-  /** Screen: report playback of a line back to the hub (loading / playing / ended / error ...). */
+  /** Screen: report playback of a line back to the hub (loading / playing / ended / error ...), stamped in hub clock. */
   reportSay(status: Omit<SayStatus, 'at'> & { at?: number }, topic: string = SAY_STATUS_TOPIC) {
-    this.sendApp(topic, { ...status, at: status.at ?? Date.now() });
+    this.sendApp(topic, { ...status, at: status.at ?? this.now() });
   }
 
+  /** Disconnect and stop reconnecting (also cancels a pending retry). A pending `connect()` rejects. */
   close() {
-    this.closedByUser = true;
-    this.ws?.close();
+    this.want = false;
+    this.clearRetry();
+    const ws = this.ws;
+    this.ws = null;
+    this.detach(ws);
+    this.connected = false;
+    for (const w of this.waiters.splice(0)) w.reject(new Error('closed by the client'));
+    if (ws) this.emit('close');
+    this.setStatus('closed');
   }
 }
