@@ -19,12 +19,13 @@
     <div id="partial"></div>
     <div id="heard">Say something into the phone.</div>
     <div id="say"></div>
-    <small>Press any key once so the browser allows speech.</small>
+    <small id="status">Press any key once so the browser allows speech.</small>
     <script type="module">
       import { BridgeClient } from '/lib/index.js';
       const $ = (id) => document.getElementById(id);
       const tv = new BridgeClient({ url: `ws://${location.host}/ws`, role: 'screen', code: sessionStorage.getItem('code') ?? undefined });
       tv.on('welcome', (w) => { sessionStorage.setItem('code', w.code); $('code').textContent = w.code; $('join').textContent = w.joinUrl; });
+      tv.on('status', (s) => ($('status').textContent = s === 'open' ? 'Connected.' : s === 'reconnecting' ? 'Hub offline, retrying…' : s));
       tv.on('transcript.partial', (m) => ($('partial').textContent = m.text));
       tv.on('intent', (m) => {
         const receivedAt = performance.timeOrigin + performance.now();
@@ -32,16 +33,59 @@
         $('heard').textContent = `“${m.payload.text}”`;
         requestAnimationFrame(() => tv.ack(m, { receivedAt })); // after the frame that shows it
       });
-      // TV -> room speech: play the clip if there is one, otherwise speak the text; caption it either way
-      tv.onSay((line) => {
+
+      // TV -> room speech: one queue. "high" interrupts and clears it; "playing" is reported when sound starts.
+      const queue = [];
+      let current = null;
+      const report = (id, state, detail) => tv.reportSay({ id, state, detail });
+      function stopCurrent() {
+        if (!current) return;
+        const { id, stop } = current;
+        current = null;
+        stop();
+        report(id, 'interrupted');
+      }
+      function playNext() {
+        if (current || !queue.length) return;
+        const line = queue.shift();
         $('say').textContent = line.text;
-        tv.reportSay({ id: line.id, state: 'playing' });
-        const done = () => tv.reportSay({ id: line.id, state: 'ended' });
-        if (line.audioUrl) { const a = new Audio(line.audioUrl); a.onended = done; a.play().catch(() => tv.reportSay({ id: line.id, state: 'error' })); return; }
-        if (line.priority === 'high') speechSynthesis.cancel();
-        const u = new SpeechSynthesisUtterance(line.text); u.onend = done; speechSynthesis.speak(u);
+        const done = (state, detail) => {
+          if (current?.id !== line.id) return;
+          current = null;
+          report(line.id, state, detail);
+          playNext();
+        };
+        if (line.audioUrl) {
+          const a = new Audio(line.audioUrl);
+          current = { id: line.id, stop: () => a.pause() };
+          report(line.id, 'loading');
+          a.onplaying = () => report(line.id, 'playing');
+          a.onended = () => done('ended');
+          a.onerror = () => done('error', 'audio failed to load');
+          a.play().catch((e) => done('error', String(e)));
+        } else if ('speechSynthesis' in window) {
+          const u = new SpeechSynthesisUtterance(line.text);
+          current = { id: line.id, stop: () => speechSynthesis.cancel() };
+          u.onstart = () => report(line.id, 'playing');
+          u.onend = () => done('ended');
+          u.onerror = (e) => done('error', e.error);
+          speechSynthesis.speak(u);
+        } else {
+          let timer = 0;
+          current = { id: line.id, stop: () => clearTimeout(timer) };
+          report(line.id, 'no-audio');
+          timer = setTimeout(() => done('ended'), line.durationMs);
+        }
+      }
+      tv.onSay((line) => {
+        if (line.priority === 'high') {
+          queue.length = 0;
+          stopCurrent();
+        }
+        queue.push(line);
+        playNext();
       });
-      tv.connect();
+      tv.connect().catch(() => undefined); // keeps retrying in the background
     </script>
   </body>
 </html>

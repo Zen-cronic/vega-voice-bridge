@@ -22,7 +22,10 @@
       const code = location.pathname.split('/p/')[1];
       const phone = new BridgeClient({ url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`, role: 'mic', code });
       phone.on('ack', (a) => ($('lat').textContent = `speech end → TV render: ${latency(a.hops).span('speech.end', 'screen.render')} ms`));
-      phone.connect().then(() => ($('status').textContent = `paired with ${code}`), (e) => ($('status').textContent = String(e)));
+      phone.on('open', () => ($('status').textContent = `paired with ${code}`));
+      phone.on('reconnecting', () => ($('status').textContent = 'reconnecting…'));
+      phone.on('repair', () => ($('status').textContent = 'The TV is gone. Scan the code on the TV again.'));
+      phone.connect().catch((e) => ($('status').textContent = String(e.message)));
       $('f').onsubmit = (e) => { e.preventDefault(); phone.sendFinal($('t').value, { speechEndAt: performance.timeOrigin + performance.now() }); $('t').value = ''; };
       // Web Speech needs a secure context (https or localhost) and Chrome/Safari
       const SR = window.SpeechRecognition ?? window.webkitSpeechRecognition;

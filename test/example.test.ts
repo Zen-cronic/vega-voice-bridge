@@ -3,19 +3,28 @@
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { BridgeClient, type IntentMsg, type SayPayload } from '../src/index.js';
 // @ts-expect-error plain-JS example without type declarations
-import { start } from '../examples/minimal-web-tv/server.mjs';
+import { lanIp, start } from '../examples/minimal-web-tv/server.mjs';
 
 let app: { ready: Promise<number>; close: () => Promise<void> };
 let port = 0;
 beforeAll(async () => {
-  app = start({ port: 0, host: '127.0.0.1' });
+  app = start({ port: 0, host: '0.0.0.0' });
   port = await app.ready;
 });
 afterAll(() => app.close());
 
-it('serves the TV and phone pages', async () => {
+it('serves the TV and phone pages; /lib/ serves only dist/', async () => {
   expect(await (await fetch(`http://127.0.0.1:${port}/`)).text()).toContain('minimal TV');
   expect(await (await fetch(`http://127.0.0.1:${port}/p/ABCD`)).text()).toContain('phone mic');
+  for (const escape of ['/lib/..%2Fpackage.json', '/lib/%2e%2e/src/hub.ts', '/lib/..%2F..%2Fpackage.json'])
+    expect((await fetch(`http://127.0.0.1:${port}${escape}`)).status).toBe(404);
+});
+
+it('M38: the join URL points at the LAN address and the bound port, not localhost:0', async () => {
+  const tv = new BridgeClient({ url: `ws://127.0.0.1:${port}/ws`, role: 'screen', reconnect: false });
+  const { code, joinUrl } = await tv.connect();
+  expect(joinUrl).toBe(`http://${lanIp() as string}:${port}/p/${code}`);
+  tv.close();
 });
 
 it('phone utterance -> intent on the TV + the TV says it back', async () => {
