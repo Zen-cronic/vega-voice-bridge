@@ -348,5 +348,7 @@ describe('screen.say: TV -> room speech (two-way)', () => {
     expect(resolveSayAudio('/api/tts/a.mp3', 'http://192.168.1.20:8792/')).toBe('http://192.168.1.20:8792/api/tts/a.mp3');
     expect(resolveSayAudio('https://bucket.example/a.mp3?sig', 'http://x')).toBe('https://bucket.example/a.mp3?sig');
     expect(resolveSayAudio('', 'http://x')).toBe('');
+    expect(resolveSayAudio('//cdn.example/a.mp3', 'https://hub.example')).toBe('https://cdn.example/a.mp3');
+    expect(resolveSayAudio('//cdn.example/a.mp3', 'http://192.168.1.20:8792')).toBe('http://cdn.example/a.mp3');
   });
 });

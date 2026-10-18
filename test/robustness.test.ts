@@ -238,6 +238,20 @@ describe('rooms and pairing limits', () => {
     expect(hub.peersOf(hub.rooms.get('AAAA')!).map((p) => p.clientId)).toEqual(['tv_1']);
   });
 
+  it('pairing brute force via the screen role: explicit codes that miss share the wrong-code budget', async () => {
+    const { url, hub } = await start({ limits: { codeMissesPerMinute: 2 } });
+    const live = await screen(url, 'tv_live');
+    await screen(url, 'probe_1', { code: 'ZZZZ' }); // a miss: creates ZZZZ (as a resume would)
+    expect((await mic(url, 'YYYY', 'probe_2')).first).toMatchObject({ type: 'error', code: 'unknown-code' }); // a mic miss
+    const probe = await raw(url);
+    probe.send({ type: 'hello', v: 1, role: 'screen', clientId: 'probe_3', code: 'XXXX' });
+    expect(await probe.next()).toMatchObject({ type: 'error', code: 'rate-limited' });
+    expect(hub.rooms.has('XXXX')).toBe(false);
+    const rejoin = await raw(url); // joining a live room by its code is not a miss, but the budget is spent for this key
+    rejoin.send({ type: 'hello', v: 1, role: 'screen', clientId: 'tv_second', code: live.code });
+    expect(await rejoin.next('welcome')).toMatchObject({ code: live.code });
+  });
+
   it('pairing brute force: after codeMissesPerMinute wrong codes, mic hellos from that key are refused', async () => {
     const { url } = await start({ limits: { codeMissesPerMinute: 3 } });
     const tv = await screen(url);

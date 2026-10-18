@@ -49,7 +49,7 @@ export interface HubLimits {
   messagesPerSecond: number;
   /** Hellos per rate key (default: remote address) per minute. Default 120. 0 disables. */
   hellosPerMinute: number;
-  /** Mic hellos with a wrong code per rate key per minute before further mic hellos are refused. Default 30. 0 disables. */
+  /** Hellos naming a code no live room has (mic, or a screen probing) per rate key per minute; past it, hellos naming a code are refused. Default 30. 0 disables. */
   codeMissesPerMinute: number;
   /** Above this many buffered bytes to one peer, live captions and untracked app frames to it are dropped. Default 1 MiB. */
   maxBufferedBytes: number;
@@ -526,7 +526,15 @@ export class BridgeHub {
         return this.error(ws, 'unknown-code', `no TV is showing code ${code || '(none)'}`);
       }
     } else {
-      room = this.tryCreateRoom(isPairingCode(code) ? code : undefined);
+      // A screen naming a code joins that room if it exists, so a screen probing codes is a guess like a mic's:
+      // a miss (which creates the room, as a resume after a hub restart does) counts against the same budget.
+      const explicit = isPairingCode(code);
+      if (explicit && !this.rooms.has(code)) {
+        if (this.misses.full(conn.key, t))
+          return this.error(ws, 'rate-limited', 'too many unknown codes; wait before trying again', { retryAfterMs: this.misses.retryAfter(conn.key, t) });
+        this.misses.hit(conn.key, t);
+      }
+      room = this.tryCreateRoom(explicit ? code : undefined);
       if (!room) return this.error(ws, 'full', 'the hub has no free room');
     }
     const old = room.peers.get(msg.clientId);

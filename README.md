@@ -183,7 +183,7 @@ The hub is defensive by construction. No frame, upgrade request or app callback 
 | `limits.maxPeersPerRoom` | 32 | Peers per room |
 | `limits.messagesPerSecond` | 100 | Per socket |
 | `limits.hellosPerMinute` | 120 | Per rate key |
-| `limits.codeMissesPerMinute` | 30 | Wrong pairing codes per rate key |
+| `limits.codeMissesPerMinute` | 30 | Hellos naming a code no live room has (mic or screen), per rate key |
 | `limits.maxBufferedBytes` | 1 MiB | Above this, captions and untracked frames to a slow peer are dropped |
 | `limits.maxBufferedBytesHard` | 8 MiB | Above this, the slow peer is disconnected |
 
@@ -226,7 +226,7 @@ To keep a `clientId` across page reloads, persist **both** `client.clientId` and
 ## Security notes
 
 - **Codes are not authentication.** A code is **4 characters from a 31-character alphabet** (923,521 combinations). Anyone who can see the TV can join, which is the point in a living room and wrong for anything sensitive.
-- **Guessing is throttled.** After 30 wrong codes a minute from one rate key, mic hellos are refused. Codes are generated with the platform CSPRNG and never collide with a live room.
+- **Guessing is throttled.** After 30 hellos a minute from one rate key that name a code no live room has, hellos naming a code are refused. That includes a screen probing codes, since a screen may join a room by its code. Codes are generated with the platform CSPRNG and never collide with a live room.
 - **Rooms do not outlive the TV.** A mic can join only a room whose screen is present, or left less than `roomGraceMs` ago. Rooms live in memory and disappear when the hub restarts; the TV re-creates its code on reconnect.
 - **Behind a tunnel or reverse proxy, set `rateKey`.** There, every client shares one remote address. Serve **https/wss** beyond the LAN, rotate codes per session, and consider an on-screen confirm.
 - **`clientId` is not a secret.** It is shown to the room. A live `clientId` can be taken over only with its `resumeToken`, or once the holder stops answering pings.
@@ -243,14 +243,14 @@ To keep a `clientId` across page reloads, persist **both** `client.clientId` and
 
 ## Tests
 
-`npm test` runs 91 tests in 6 files:
+`npm test` runs 92 tests in 6 files:
 
 - **Protocol conformance** (`test/conformance.test.ts`, 36), the reference for second implementations:
   - wire vectors for every message type;
   - field-level validation;
   - the hub as a black box over raw sockets: refusals, version, pairing, code normalization, `id-in-use`, 0.1 compatibility, role rules, handler failure;
   - routing, hop order, and `screen.say`.
-- **Hub robustness** (`test/robustness.test.ts`, 22): every input that crashed the 0.1.0 hub (non-string `code`, invalid UTF-8, a reserved opcode, an oversized frame, a bad upgrade target, throwing callbacks). It also covers room lifetime, collision-free codes, brute-force and rate limits, capacity, dead-holder takeover, heartbeat and backpressure.
+- **Hub robustness** (`test/robustness.test.ts`, 23): every input that crashed the 0.1.0 hub (non-string `code`, invalid UTF-8, a reserved opcode, an oversized frame, a bad upgrade target, throwing callbacks). It also covers room lifetime, collision-free codes, brute-force and rate limits, capacity, dead-holder takeover, heartbeat and backpressure.
 - **Client resilience** (`test/client.test.ts`, 17): backoff, split-frame reassembly, dead links without `onclose`, connect timeout, timer hygiene, clock-offset reset, and real hub restarts (re-join and re-pair).
 - **Client and hub behaviour** (`test/bridge.test.ts`, 10): pairing, resume, end-to-end hops, partials, taps, two mics.
 - **Examples** (`test/example.test.ts`, 3; `test/agent.test.ts`, 3): the web TV server, and the agent round trip with a stubbed `respond`.
@@ -262,7 +262,7 @@ Requires Node 20 or later (developed on Node 24).
 ```bash
 npm install              # dev dependencies only; also builds dist/ (prepare)
 npm run typecheck        # tsc --noEmit over src/ and test/
-npm test                 # vitest: 91 tests, no build needed (tests import src/)
+npm test                 # vitest: 92 tests, no build needed (tests import src/)
 npm run build            # cleans, then tsc -> dist/ (ESM + .d.ts + source maps)
 npm pack --dry-run       # dist/, src/, README.md, PROTOCOL.md, CHANGELOG.md, LICENSE (no tests or examples)
 ```

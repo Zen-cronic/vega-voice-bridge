@@ -39,6 +39,7 @@ The wire protocol is still **v1** (revision 2, see [PROTOCOL.md](PROTOCOL.md#rev
 - `PROTOCOL.md`: the spec, versioning rules, and which tests a second implementation must pass.
 
 ### Changed (stricter than 0.1)
+- A screen hello whose explicit code matches no live room counts against the wrong-code budget, so the screen role cannot enumerate codes faster than a mic.
 - Inbound messages are validated field by field. Anything malformed gets `bad-message` and is not relayed. Relayed messages carry only known fields.
 - Role rules: a mic may not send `ack`, and a screen may not send transcripts. Clients may not send hub message types. All of these answer `not-allowed`.
 - A room closes once its last screen has been gone for `roomGraceMs` (default 60 s). Its mics get `unknown-code`, then close code 4404.
@@ -47,7 +48,7 @@ The wire protocol is still **v1** (revision 2, see [PROTOCOL.md](PROTOCOL.md#rev
   - 256 KiB frame cap;
   - 10,000 rooms and 32 peers per room;
   - 100 messages/s per socket;
-  - 120 hellos and 30 wrong codes per minute per remote address;
+  - 120 hellos, and 30 hellos naming an unknown code (mic or screen), per minute per remote address;
   - 1 MiB / 8 MiB backpressure thresholds;
   - hub pings every 15 s.
 - `npm run build` cleans `dist/` first. `prepare` builds, so a git install builds itself.
