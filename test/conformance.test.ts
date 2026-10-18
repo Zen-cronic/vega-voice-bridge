@@ -33,22 +33,28 @@ const client = (o: ConstructorParameters<typeof BridgeClient>[0]) => {
   return c;
 };
 /** A raw socket, to test the hub as a black box (what a non-JS client would see). */
-async function raw(): Promise<{ ws: WebSocket; next: () => Promise<BridgeMessage>; send: (m: unknown) => void }> {
+async function raw(): Promise<{ ws: WebSocket; next: (type?: string) => Promise<BridgeMessage>; send: (m: unknown) => void }> {
   const ws = new WebSocket(url);
   sockets.push(ws);
   const inbox: BridgeMessage[] = [];
-  const waiters: Array<(m: BridgeMessage) => void> = [];
+  const waiters: Array<{ type?: string; fn: (m: BridgeMessage) => void }> = [];
   ws.on('message', (d) => {
     const m = JSON.parse(String(d)) as BridgeMessage;
-    const w = waiters.shift();
-    if (w) w(m);
+    const i = waiters.findIndex((w) => !w.type || w.type === m.type);
+    if (i >= 0) waiters.splice(i, 1)[0]!.fn(m);
     else inbox.push(m);
   });
   await new Promise((r) => ws.once('open', r));
   return {
     ws,
     send: (m) => ws.send(typeof m === 'string' ? m : JSON.stringify(m)),
-    next: () => new Promise((r) => (inbox.length ? r(inbox.shift()!) : waiters.push(r))),
+    /** The next message, or the next one of `type` (others stay queued). */
+    next: (type) =>
+      new Promise((resolve) => {
+        const i = inbox.findIndex((m) => !type || m.type === type);
+        if (i >= 0) resolve(inbox.splice(i, 1)[0]!);
+        else waiters.push({ type, fn: resolve });
+      }),
   };
 }
 
@@ -82,7 +88,9 @@ describe('wire format', () => {
     ['hello (mic with code)', { type: 'hello', v: 1, role: 'mic', clientId: 'mic_1', code: 'K7QF', name: 'Zin' }],
     ['welcome', { type: 'welcome', v: 1, clientId: 'mic_1', role: 'mic', code: 'K7QF', joinUrl: 'https://tv.example/p/K7QF', peers: [], serverTime: 1 }],
     ['peers', { type: 'peers', peers: [{ clientId: 'a', role: 'screen' }] }],
+    ['hello (with resumeToken)', { type: 'hello', v: 1, role: 'screen', clientId: 'screen_1', code: 'K7QF', resumeToken: '0f1e2d3c4b5a69788796a5b4c3d2e1f0' }],
     ['error', { type: 'error', code: 'unknown-code', message: 'no TV is showing code ZZZZ' }],
+    ['error (rate-limited)', { type: 'error', code: 'rate-limited', message: 'too many wrong codes', retryAfterMs: 42000 }],
     ['ping', { type: 'ping', t0: 1 }],
     ['pong', { type: 'pong', t0: 1, serverTime: 2 }],
     ['transcript.partial', { type: 'transcript.partial', utteranceId: 'u1', text: 'six with', hops: [{ hop: 'mic.partial', at: 1 }] }],
@@ -95,8 +103,32 @@ describe('wire format', () => {
     expect(decode(encode(m))).toEqual(m);
   });
   it('rejects malformed frames', () => {
-    for (const bad of ['', '[]', 'null', '42', '{"type":1}', '{"type":"nope"}', '{"type":"hello","v":1,"role":"remote","clientId":"x"}', '{"type":"transcript.final","utteranceId":"u"}', '{"type":"ack","utteranceId":"u","hops":"x"}'])
+    for (const bad of [
+      '',
+      '[]',
+      'null',
+      '42',
+      '{"type":1}',
+      '{"type":"nope"}',
+      '{"type":"hello","v":1,"role":"remote","clientId":"x"}',
+      '{"type":"hello","v":1,"role":"mic","clientId":"x","code":1234}',
+      '{"type":"hello","v":1,"role":"mic","clientId":""}',
+      '{"type":"transcript.final","utteranceId":"u"}',
+      '{"type":"transcript.final","utteranceId":"u","text":"x","hops":[{"hop":"a","at":"1"}]}',
+      '{"type":"ack","utteranceId":"u","hops":"x"}',
+      '{"type":"ack","utteranceId":"u","stage":"done","hops":[]}',
+      '{"type":"intent","utteranceId":"u","name":"n","ok":"yes","payload":1,"hops":[]}',
+      '{"type":"app","payload":1}',
+      '{"type":"ping","t0":null}',
+    ])
       expect(decode(bad)).toBeNull();
+  });
+  it('optional fields may be null (dropped) and missing hops default to []', () => {
+    expect(decode('{"type":"hello","v":1,"role":"mic","clientId":"m","code":"K7QF","name":null}')).toEqual({ type: 'hello', v: 1, role: 'mic', clientId: 'm', code: 'K7QF' });
+    expect(decode('{"type":"transcript.final","utteranceId":"u","text":"x"}')).toEqual({ type: 'transcript.final', utteranceId: 'u', text: 'x', hops: [] });
+  });
+  it('a hello for another protocol version decodes, so the hub can answer "version" rather than bad-message', () => {
+    expect(decode('{"type":"hello","v":2,"role":"tv","clientId":5}')).toMatchObject({ type: 'hello', v: 2 });
   });
   it('protocol constants are stable', () => {
     expect(PROTOCOL_VERSION).toBe(1);
@@ -198,13 +230,71 @@ describe('routing rules', () => {
     expect(intents).toBe(0);
     expect(code).toBeTruthy();
   });
-  it('a reconnecting client with the same clientId replaces its old socket (no duplicate peer)', async () => {
+  it('a reconnecting client with the same clientId and resumeToken replaces its old socket (no duplicate peer)', async () => {
     const tv = client({ url, role: 'screen', clientId: 'screen_same' });
     const { code } = await tv.connect();
-    const again = client({ url, role: 'screen', clientId: 'screen_same', code });
+    const again = client({ url, role: 'screen', clientId: 'screen_same', resumeToken: tv.resumeToken, code });
     await again.connect();
     await new Promise((r) => setTimeout(r, 30));
     expect(hub.peersOf(hub.rooms.get(code)!)).toHaveLength(1);
+    expect(tv.connected).toBe(false);
+  });
+  it('a hello that claims a live clientId without its resumeToken gets id-in-use; the holder keeps its seat', async () => {
+    const tv = client({ url, role: 'screen', clientId: 'screen_held' });
+    const { code } = await tv.connect();
+    const thief = await raw();
+    thief.send({ type: 'hello', v: 1, role: 'screen', clientId: 'screen_held', code, resumeToken: 'guess' });
+    expect(await thief.next()).toMatchObject({ type: 'error', code: 'id-in-use' });
+    const mic = await raw();
+    mic.send({ type: 'hello', v: 1, role: 'mic', clientId: 'screen_held', code });
+    expect(await mic.next()).toMatchObject({ type: 'error', code: 'id-in-use' });
+    expect(tv.connected).toBe(true);
+    expect(hub.rooms.get(code)!.peers.get('screen_held')!.role).toBe('screen');
+  });
+  it('0.1 clients (no resumeToken) still replace a same-role socket with the same clientId', async () => {
+    const a = await raw();
+    a.send({ type: 'hello', v: 1, role: 'screen', clientId: 'legacy_tv' });
+    const { code } = (await a.next()) as { code: string };
+    const closed = new Promise((r) => a.ws.once('close', r));
+    const b = await raw();
+    b.send({ type: 'hello', v: 1, role: 'screen', clientId: 'legacy_tv', code });
+    expect(await b.next()).toMatchObject({ type: 'welcome', code });
+    await closed;
+    expect(hub.peersOf(hub.rooms.get(code)!)).toHaveLength(1);
+  });
+  it('role rules: a mic may not ack, a screen may not send transcripts, nobody may send hub messages', async () => {
+    const tv = await raw();
+    tv.send({ type: 'hello', v: 1, role: 'screen', clientId: 'tv_r' });
+    const { code } = (await tv.next()) as { code: string };
+    const mic = await raw();
+    mic.send({ type: 'hello', v: 1, role: 'mic', clientId: 'mic_r', code });
+    expect(await mic.next()).toMatchObject({ type: 'welcome' });
+    mic.send({ type: 'ack', utteranceId: 'u', stage: 'rendered', hops: [] });
+    expect(await mic.next('error')).toMatchObject({ code: 'not-allowed' });
+    tv.send({ type: 'transcript.final', utteranceId: 'u', text: 'x', hops: [] });
+    expect(await tv.next('error')).toMatchObject({ code: 'not-allowed' });
+    mic.send({ type: 'intent', utteranceId: 'u', name: 'x', ok: true, payload: null, hops: [] });
+    expect(await mic.next('error')).toMatchObject({ code: 'not-allowed' });
+  });
+  it('every field is type- and length-checked: a bad field gets bad-message naming it', async () => {
+    const s = await raw();
+    const cases: Array<[unknown, RegExp]> = [
+      [{ type: 'hello', v: 1, role: 'mic', clientId: 'x', code: 1234 }, /hello\.code must be a string/],
+      [{ type: 'hello', v: 1, role: 'mic', clientId: 7 }, /hello\.clientId must be a string/],
+      [{ type: 'hello', v: 1, role: 'mic', clientId: 'x'.repeat(129) }, /hello\.clientId must be 1\.\.128/],
+      [{ type: 'hello', v: '1', role: 'mic', clientId: 'x' }, /hello\.v must be a number/],
+      [{ type: 'app', topic: 5, payload: 1 }, /app\.topic must be a string/],
+      [{ type: 'transcript.final', utteranceId: 'u', text: 'x', hops: [null] }, /hops entries/],
+      [{ type: 'ping', t0: 'now' }, /ping\.t0 must be a finite number/],
+    ];
+    for (const [m, re] of cases) {
+      s.send(m);
+      const e = await s.next();
+      expect(e).toMatchObject({ type: 'error', code: 'bad-message' });
+      expect((e as { message: string }).message).toMatch(re);
+    }
+    s.send({ type: 'ping', t0: 1 });
+    expect(await s.next()).toMatchObject({ type: 'pong', t0: 1 });
   });
 });
 
