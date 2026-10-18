@@ -1,8 +1,8 @@
 {
   "name": "@rackboard/tv-voice-bridge",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "The phone is the microphone (and the TV is the speaker) for TV apps: pairing codes, a tiny WebSocket protocol, a hub and a client with per-hop latency stamps. Built for Fire TV Vega OS, which has no third-party mic API.",
+  "description": "A voice back-and-forth harness for TV apps and agents: the phone listens, your app or agent answers, the TV shows it and says it, and playback is confirmed. A small WebSocket protocol, a hub and a client with per-hop latency stamps. Built for Fire TV (Vega OS), which has no app-level speech-to-text API.",
   "license": "MIT",
   "author": "Kaung Zin Hein",
   "type": "module",
@@ -36,14 +36,16 @@
     "dist",
     "src",
     "README.md",
+    "PROTOCOL.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "clean": "rm -rf dist *.tgz",
-    "prepack": "npm run build"
+    "prepare": "npm run build"
   },
   "engines": {
     "node": ">=20"
@@ -57,7 +59,10 @@
     "microphone",
     "websocket",
     "companion-app",
-    "10-foot"
+    "10-foot",
+    "agent",
+    "voice-agent",
+    "speech"
   ],
   "peerDependencies": {
     "ws": "^8"
