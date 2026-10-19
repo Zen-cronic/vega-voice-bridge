@@ -22,6 +22,10 @@ The wire protocol is still **v1**. Everything below is additive.
 - Client: `onSpeech()` and `stopSay()` for mics, `onSayStop()` for screens, and `sendFinal({speechStartAt})`. The React hook honours `screen.say.stop` (`interruptible`, default true) and reports each line's `text`.
 - Examples: the phone page uses `./phone` (hold to talk, hands-free, a stop button, barge-in on). The web TV honours `screen.say.stop` and reports every line it drops as `interrupted`.
 
+- **`npm run example`:** the whole loop in one process (`examples/loop/loop.mjs`). A hub, a TV and a phone with a scripted recognizer run three utterances. It prints each hop leg, `speech.end -> screen.render` and `say -> playing`, measured in-process, and it shows the echo guard dropping the TV's replies that the phone hears.
+- **`tv-voice-bridge-hub` (bin):** starts a hub and prints the WebSocket and join URLs. Flags: `--port` (default 8790), `--host`, `--path`, `--public-url` or `--join-url '<...{code}...>'`, `--echo`, `--trust-proxy`, `--quiet`. It serves `GET /healthz`. `npm run hub` runs it from this repo.
+- A minimal `Dockerfile` for the hub, and a README section, "Deploy the hub anywhere".
+
 ### Changed
 - Mics now receive `app` frames from the hub (`screen.speech`). Mic code that handles every `app` message without checking `topic` will see them.
 - In the conformance suite, "hub.say reaches no mic" now means no `screen.say` frame reaches a mic. Mics get a `screen.speech` notice instead.

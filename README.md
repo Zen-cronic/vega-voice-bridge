@@ -189,6 +189,16 @@ The hub is defensive by construction. No frame, upgrade request or app callback 
 
 `hub.stats` counts bad messages, rate limits, backpressure drops, heartbeat timeouts, handler errors and expired rooms.
 
+## Deploy the hub anywhere
+
+The hub is one Node process. It has one dependency (`ws`) and keeps its rooms in memory, so it runs wherever Node 20+ runs:
+
+- **A laptop or a box on the LAN.** Run `npx tv-voice-bridge-hub --port 8790` from an app that has this package installed, or `npm run hub -- --echo` in this repo. It prints the WebSocket URL, plus the join URL built from this machine's LAN address.
+- **A container.** Use `docker build -t tv-voice-bridge-hub .`, then `docker run --rm -p 8790:8790 tv-voice-bridge-hub --public-url http://<lan-ip>:8790`. Arguments after the image name go to the CLI. `GET /healthz` answers `{"ok":true,"rooms":<n>}`.
+- **Behind a reverse proxy or a tunnel.** Pass `--public-url https://your.host` (or a full `--join-url 'https://app.example/join/{code}'`), add `--trust-proxy` so rate limits use `X-Forwarded-For`, and serve `wss://`.
+
+The CLI hub serves only the WebSocket and `/healthz`. The join URL must open a page that runs the phone side: your app's page, or [`examples/minimal-phone/phone.html`](examples/minimal-phone/phone.html), which the example servers serve. `--echo` answers each final with "You said: ...", which is enough to try the loop. For your own agent, use `BridgeHub` with `onFinal` (above).
+
 ## Mic (phone)
 
 ```ts
