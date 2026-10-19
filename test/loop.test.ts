@@ -138,6 +138,19 @@ describe('tv-voice-bridge-hub (CLI)', () => {
     expect(seen).toEqual(['10.0.0.2']);
   });
 
+  it('--proxy-hops above 1 with no --proxy warns at startup that CDN clients share one key', async () => {
+    const lines: string[] = [];
+    const app = await startHubCli({ port: 0, host: '127.0.0.1', path: '/ws', echo: false, trustProxy: true, proxyHops: 2, quiet: true }, (l) => lines.push(l));
+    await app.close();
+    expect(lines.filter((l) => l.startsWith('warning: --proxy-hops 2 without --proxy'))).toHaveLength(1);
+    for (const o of [{ proxyHops: 2, proxies: ['203.0.113.0/24'] }, { proxyHops: 1 }, { proxyHops: 2, trustProxy: false }]) {
+      const quiet: string[] = [];
+      const ok = await startHubCli({ port: 0, host: '127.0.0.1', path: '/ws', echo: false, trustProxy: true, quiet: true, ...o }, (l) => quiet.push(l));
+      await ok.close();
+      expect(quiet.some((l) => l.startsWith('warning:')), JSON.stringify(o)).toBe(false);
+    }
+  });
+
   it('a --proxy that is not an address or CIDR range is refused, not silently ignored', () => {
     expect(parseHubArgs(['--proxy', '203.0.113.0/24', '--proxy', '2001:db8::/32'])).toMatchObject({ proxies: ['203.0.113.0/24', '2001:db8::/32'] });
     for (const bad of ['proxy.local', '10.0.0.0/', '10.0.0.0/33', '10.0.0.0/8/1', '2001:db8::/129'])

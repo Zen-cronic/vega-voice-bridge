@@ -145,6 +145,10 @@ export async function startHubCli(o: HubCliOptions, log: (line: string) => void 
   log(`tv-voice-bridge hub on ws://${reachable}:${port}${o.path}`);
   log(`phones join at ${joinUrl('<CODE>')} (each TV gets its code when it connects)`);
   if (o.echo) log('echo responder on: each final is answered "You said: ..."');
+  if (o.trustProxy && (o.proxyHops ?? 1) > 1 && (o.proxies ?? []).length === 0)
+    log(
+      `warning: --proxy-hops ${o.proxyHops} without --proxy: only loopback proxies are passed over, so every client behind an outer proxy (a CDN) shares its address as one rate-limit key. Name the outer proxy's ranges with --proxy.`,
+    );
   const close = () => new Promise<void>((resolve) => (hub.close(), server.close(() => resolve())));
   return { hub, server, port, joinUrl, close };
 }
