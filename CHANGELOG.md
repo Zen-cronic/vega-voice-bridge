@@ -1,6 +1,23 @@
 # Changelog
 
-## Unreleased (0.3.0)
+## 0.3.1
+
+The wire protocol is unchanged (v1, revision 3).
+
+### Fixed
+- **Hub CLI, `--trust-proxy`:** rate limits are keyed on the client address the proxy appended to `X-Forwarded-For` (the last entry), read only when the socket's peer is loopback or a proxy named with `--proxy`. They were keyed on the first entry, which the client controls, so a client that changed it on every upgrade got a fresh pairing-code guess budget each time. `--proxy-hops <n>` handles chains of proxies, and `forwardedClient(req, { proxies, hops })` in `./hub` does the same for your own `rateKey`; the README sample used the whole header.
+- **Hub CLI:** the join URL it prints now opens a phone page. The hub serves `examples/minimal-phone/phone.html` at `/p/<code>` and the package's browser modules at `/lib/` (`--no-phone` turns it off); before, `/p/<code>` answered 404. The page ships in the package and the container image. The Vega voice-loop hub serves it too, and its QR uses this machine's LAN address instead of 127.0.0.1.
+- **`./vega`:** a line stopped or superseded while its clip downloads, or during the MSE setup, no longer plays when the download finishes, and media events reach only the line whose source is on the player, so a barge-in or a `high` line is not cut short by the line it replaced. Stopping a line also detaches its stream.
+- **`./vega`:** an https line after a plain-http one clears the leftover `srcObject` (which takes precedence over `src`), so it plays.
+- **`./vega`:** audio URLs resolve with `resolveSayAudio`, so a protocol-relative `//cdn/clip.m4a` keeps its host.
+- **`./vega`:** a failed media player start is not cached; the next line tries again instead of failing until the app restarts.
+- **`./phone`:** a final the recognizer delivers again is sent once, not twice.
+- **`./phone`:** a `speechend` that fires before an utterance's first result is kept, so `speech.end` on short phrases is the end of speech, not the arrival of the result.
+- **`./phone`:** the echo guard forgets lines that were only ever queued (a screen that reports no playback) once their hold is a minute past, so it no longer grows for the whole session.
+- **`./phone`:** in continuous mode, a restart whose `recognizer.start()` throws is retried with backoff and stops the mic with a fatal error after three in a row; the mic used to stay `starting` and never listen again. A `start()` call that throws returns false.
+- **Client reassembly:** each piece of a split message is scanned once, so a large message in many small pieces costs about what it costs in a few (a 900 KiB message in 1 KiB pieces went from about a second to under 10 ms on a desktop).
+
+## 0.3.0
 
 The wire protocol is still **v1**. Everything below is additive.
 
