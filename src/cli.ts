@@ -8,13 +8,12 @@
  * join URL it prints. With `--echo` it also answers each final itself ("You said: ..."), which is enough to try the
  * loop. For a real app, import `BridgeHub` and pass `onFinal`. Needs the `ws` package next to this one.
  */
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { realpathSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { networkInterfaces } from 'node:os';
-import { extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { BridgeHub, forwardedClient } from './hub.js';
+import { lanAddress, servePhonePage } from './serve.js';
 
 const HELP = `Usage: tv-voice-bridge-hub [options]
 
@@ -36,50 +35,6 @@ const HELP = `Usage: tv-voice-bridge-hub [options]
 GET /p/<code> serves a phone page (hold to talk, hands-free, or type) and /lib/ the modules it imports.
 Browsers allow the microphone only on https or localhost: over plain http on the LAN the page offers typing.
 GET /healthz answers {"ok":true,"rooms":<n>}.`;
-
-// The phone page ships with the package; its modules are the package's own build. Both src/ and dist/ sit one
-// level below the package root, so this resolves the same from either.
-const PACKAGE_ROOT = fileURLToPath(new URL('..', import.meta.url));
-const PHONE_PAGE = join(PACKAGE_ROOT, 'examples', 'minimal-phone', 'phone.html');
-const LIB = join(PACKAGE_ROOT, 'dist');
-const TYPES: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.map': 'application/json' };
-
-/**
- * Serve the phone page at `/p/<code>` and the browser modules it imports at `/lib/` (files of the package's
- * `dist/` only). Returns false when the request is for neither, so the caller answers it.
- */
-export function servePhonePage(req: IncomingMessage, res: ServerResponse): boolean {
-  let path: string;
-  try {
-    path = decodeURIComponent(new URL(req.url ?? '/', 'http://x').pathname);
-  } catch {
-    return false;
-  }
-  let file: string | null = null;
-  if (path.startsWith('/p/')) file = PHONE_PAGE;
-  else if (path.startsWith('/lib/')) {
-    const f = resolve(LIB, `.${path.slice(4)}`);
-    file = f.startsWith(LIB + sep) && (extname(f) === '.js' || extname(f) === '.map') ? f : '';
-  } else return false;
-  if (req.method !== 'GET' && req.method !== 'HEAD') {
-    res.writeHead(405, { allow: 'GET, HEAD' }).end();
-    return true;
-  }
-  if (!file || !existsSync(file) || !statSync(file).isFile()) {
-    res.writeHead(404, { 'content-type': 'text/plain' }).end('not found\n');
-    return true;
-  }
-  const body = readFileSync(file);
-  res.writeHead(200, { 'content-type': TYPES[extname(file)] ?? 'application/octet-stream', 'content-length': body.length });
-  res.end(req.method === 'HEAD' ? undefined : body);
-  return true;
-}
-
-/** This machine's first non-internal IPv4 address: what a phone on the same Wi-Fi can reach. */
-export function lanAddress(): string {
-  for (const list of Object.values(networkInterfaces())) for (const a of list ?? []) if (a.family === 'IPv4' && !a.internal) return a.address;
-  return 'localhost';
-}
 
 export interface HubCliOptions {
   port: number;
@@ -202,16 +157,21 @@ async function main() {
   process.once('SIGTERM', stop);
 }
 
-const invokedDirectly = (() => {
+/**
+ * True only when Node was started with this very file as its entry (directly, or through the
+ * `tv-voice-bridge-hub` bin link, which resolves to it). Importing this module never starts a hub, whatever the
+ * importer's own entry file is called.
+ */
+export function isEntry(argv1: string | undefined, self: string = fileURLToPath(import.meta.url)): boolean {
+  if (!argv1) return false;
   try {
-    const self = new URL(import.meta.url).pathname;
-    const arg = process.argv[1] ?? '';
-    return arg === self || arg.endsWith('/tv-voice-bridge-hub') || arg.endsWith('/cli.js');
+    return realpathSync(argv1) === realpathSync(self);
   } catch {
     return false;
   }
-})();
-if (invokedDirectly) main().catch((err: unknown) => {
+}
+
+if (isEntry(process.argv[1])) main().catch((err: unknown) => {
   console.error(err instanceof Error ? err.message : String(err));
   process.exit(1);
 });

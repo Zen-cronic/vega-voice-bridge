@@ -1,9 +1,12 @@
 // `npm run example` (examples/loop) and the hub CLI (src/cli.ts).
-import { existsSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import type { IncomingMessage } from 'node:http';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
-import { parseHubArgs, startHubCli } from '../src/cli.js';
+import { isEntry, parseHubArgs, startHubCli } from '../src/cli.js';
 import { forwardedClient } from '../src/hub.js';
 import { BridgeClient, type IntentMsg, type SayPayload } from '../src/index.js';
 // @ts-expect-error plain-JS example without type declarations
@@ -44,6 +47,37 @@ describe('tv-voice-bridge-hub (CLI)', () => {
     expect(() => parseHubArgs(['--nope'])).toThrow();
     expect(parseHubArgs(['--trust-proxy', '--proxy', '10.0.0.2', '--proxy', '10.0.0.3', '--proxy-hops', '2'])).toMatchObject({ trustProxy: true, proxies: ['10.0.0.2', '10.0.0.3'], proxyHops: 2 });
     expect(() => parseHubArgs(['--proxy-hops', '0'])).toThrow(/--proxy-hops/);
+  });
+
+  it('starts a hub only when it is the entry file itself, never when another cli.js imports it', () => {
+    const self = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
+    const dir = mkdtempSync(join(tmpdir(), 'tvb-entry-'));
+    try {
+      // A host app whose own entry happens to be called cli.js, or a bin of the same name elsewhere.
+      writeFileSync(join(dir, 'cli.js'), '');
+      writeFileSync(join(dir, 'tv-voice-bridge-hub'), '');
+      expect(isEntry(join(dir, 'cli.js'), self)).toBe(false);
+      expect(isEntry(join(dir, 'tv-voice-bridge-hub'), self)).toBe(false);
+      expect(isEntry(undefined, self)).toBe(false);
+      expect(isEntry(join(dir, 'missing.js'), self)).toBe(false);
+      // Run directly, or through the bin link npm makes.
+      expect(isEntry(self, self)).toBe(true);
+      symlinkSync(self, join(dir, 'bin-link'));
+      expect(isEntry(join(dir, 'bin-link'), self)).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('the phone page helpers are a public export, ./serve, not a deep import of the CLI', async () => {
+    const pkg = (await import('../package.json', { with: { type: 'json' } })).default as unknown as { exports: Record<string, { source?: string }> };
+    expect(pkg.exports['./serve']?.source).toBe('./src/serve.ts');
+    const serve = await import('../src/serve.js');
+    expect(typeof serve.servePhonePage).toBe('function');
+    expect(typeof serve.lanAddress).toBe('function');
+    const example = await import('node:fs').then((fs) => fs.readFileSync(new URL('../examples/vega-voice-loop/hub.mjs', import.meta.url), 'utf8'));
+    expect(example).toContain("from 'tv-voice-bridge/serve'");
+    expect(example).not.toMatch(/dist\/cli\.js/);
   });
 
   it('forwardedClient keys on what the proxy appended, and reads the header only from a trusted proxy', () => {

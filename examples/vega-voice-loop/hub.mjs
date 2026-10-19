@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BridgeHub } from 'tv-voice-bridge/hub';
 import { latency } from 'tv-voice-bridge';
-import { lanAddress, servePhonePage } from '../../dist/cli.js';
+import { lanAddress, servePhonePage } from 'tv-voice-bridge/serve';
 import { createTts } from './tts.mjs';
 
 const arg = (name) => (process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : undefined);

@@ -38,6 +38,11 @@
       "types": "./dist/protocol.d.ts",
       "default": "./dist/protocol.js"
     },
+    "./serve": {
+      "source": "./src/serve.ts",
+      "types": "./dist/serve.d.ts",
+      "default": "./dist/serve.js"
+    },
     "./qr": {
       "source": "./src/qr.ts",
       "types": "./dist/qr.d.ts",
