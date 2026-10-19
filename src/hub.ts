@@ -282,8 +282,10 @@ export class BridgeHub {
   private call<T>(label: string, fn: () => T): T | undefined {
     try {
       const r = fn();
+      // A rejected handler is reported once, here; the caller gets a promise that settles, so awaiting it
+      // does not throw the same error into onMessage's catch as well.
       if (r && typeof (r as { then?: unknown }).then === 'function') {
-        (r as unknown as Promise<unknown>).then(undefined, (err) => this.handlerError(label, err));
+        return (r as unknown as Promise<unknown>).then(undefined, (err) => (this.handlerError(label, err), undefined)) as T;
       }
       return r;
     } catch (err) {

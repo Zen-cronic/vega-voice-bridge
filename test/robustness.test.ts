@@ -191,6 +191,20 @@ describe('crash regressions: each input below killed the 0.1.0 hub process', () 
   });
 });
 
+describe('handler failures are reported once', () => {
+  it('a rejected untracked onApp is one handler-failed log, never also message-failed', async () => {
+    const logs: string[] = [];
+    const { url, hub } = await start({ log: (event) => logs.push(event), onApp: async () => Promise.reject(new Error('app bug')) });
+    const tv = await screen(url);
+    tv.send({ type: 'app', topic: 'untracked', payload: 1 });
+    await sleep(60);
+    expect(logs.filter((e) => e === 'handler-failed')).toHaveLength(1);
+    expect(logs).not.toContain('message-failed');
+    expect(hub.stats.handlerErrors).toBe(1);
+    tv.ws.close();
+  });
+});
+
 describe('rooms and pairing limits', () => {
   it('H24: a room closes once its last screen has been gone for roomGraceMs; its mics are told and disconnected', async () => {
     const closedRooms: string[] = [];
