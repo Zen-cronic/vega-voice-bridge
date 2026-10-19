@@ -67,7 +67,9 @@ describe('createVegaSayPlayer', () => {
     const urls: string[] = [];
     const p = createVegaSayPlayer({ baseUrl: 'http://127.0.0.1:8790/', fetch: async (u) => (urls.push(u), clip()()) });
     await run(p, line('/tts/a1.m4a')).done;
-    expect(urls).toEqual(['http://127.0.0.1:8790/tts/a1.m4a']);
+    // A protocol-relative URL keeps its host and takes the hub's scheme.
+    await run(p, line('//cdn.example.com/a2.m4a')).done;
+    expect(urls).toEqual(['http://127.0.0.1:8790/tts/a1.m4a', 'http://cdn.example.com/a2.m4a']);
     const bare = run(createVegaSayPlayer({ fetch: clip() }), line('/tts/a1.m4a'));
     await bare.done;
     expect(bare.seen[0]).toMatch(/needs baseUrl/);

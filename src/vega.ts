@@ -11,6 +11,7 @@
  * encode them as fragmented MP4/AAC (see examples/vega-voice-loop/tts.mjs).
  */
 import { AudioPlayer, MediaSource } from '@amazon-devices/react-native-w3cmedia';
+import { resolveSayAudio } from './protocol.js';
 import type { SayControls, SayLine, SayPlayer } from './react.js';
 
 export interface VegaSayPlayerOptions {
@@ -37,12 +38,6 @@ const isMp4 = (url: string, contentType: string | null) => /\.(m4a|mp4|m4s)(\?|#
 
 export const RAW_HTTP_AUDIO =
   'Vega plays http audio only as fragmented MP4/AAC through MSE (raw MP3 never starts): serve .m4a, or an https URL';
-
-function resolve(audioUrl: string, baseUrl: string | undefined): string | null {
-  if (/^https?:\/\//i.test(audioUrl)) return audioUrl;
-  if (!baseUrl) return null;
-  return `${baseUrl.replace(/\/+$/, '')}/${audioUrl.replace(/^\/+/, '')}`;
-}
 
 function within<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -126,8 +121,8 @@ export function createVegaSayPlayer(opts: VegaSayPlayerOptions = {}): VegaSayPla
     const live = () => !stopped && latest === mine;
     const claim = () => void (owner = { line: mine, ctl });
     void (async () => {
-      const url = line.audioUrl ? resolve(line.audioUrl, opts.baseUrl) : null;
-      if (!url) return ctl.error(line.audioUrl ? `relative audioUrl ${line.audioUrl} needs baseUrl` : 'no audioUrl');
+      const url = resolveSayAudio(line.audioUrl, opts.baseUrl ?? '');
+      if (!/^https?:\/\//i.test(url)) return ctl.error(line.audioUrl ? `relative audioUrl ${line.audioUrl} needs baseUrl` : 'no audioUrl');
       const p = await player();
       if (!live()) return;
       if (!p) return ctl.error('the Vega media player is unavailable');
