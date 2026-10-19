@@ -409,6 +409,9 @@ export function createPhoneMic(opts: PhoneMicOptions): PhoneMic {
   let restartTimer: ReturnType<typeof setTimeout> | null = null;
   let restartDelay = opts.restartDelayMs ?? 250;
   const utterances = new Map<string, Utterance>();
+  // Results of the current session already sent or dropped as finals. A recognizer may deliver a final again
+  // (a later event whose resultIndex is not past it); it is not a new utterance.
+  const finalized = new Set<string>();
 
   const guard = guardOpts
     ? new EchoGuard({
@@ -495,6 +498,7 @@ export function createPhoneMic(opts: PhoneMicOptions): PhoneMic {
       if (!result) continue;
       const text = (result[0]?.transcript ?? '').trim();
       const key = `${mySession}:${i}`;
+      if (finalized.has(key)) continue;
       let u = utterances.get(key);
       if (!u) {
         const startAt = speechStartAt !== null && speechStartAt <= t ? speechStartAt : t;
@@ -503,7 +507,6 @@ export function createPhoneMic(opts: PhoneMicOptions): PhoneMic {
         speechEndAt = null;
         utterances.set(key, u);
       }
-      if (u.done) continue;
       if (text !== u.text) {
         u.text = text;
         u.lastChangeAt = t;
@@ -529,6 +532,7 @@ export function createPhoneMic(opts: PhoneMicOptions): PhoneMic {
       u.done = true;
       clearPartial(u);
       utterances.delete(key);
+      finalized.add(key);
       if (!text) continue;
       if (blocked) {
         emit('dropped', { text, reason: 'echo' });
@@ -558,6 +562,7 @@ export function createPhoneMic(opts: PhoneMicOptions): PhoneMic {
       session++;
       for (const u of utterances.values()) clearPartial(u);
       utterances.clear();
+      finalized.clear();
       detach(r);
       try {
         r.abort();
@@ -626,6 +631,7 @@ export function createPhoneMic(opts: PhoneMicOptions): PhoneMic {
       session++;
       for (const u of utterances.values()) clearPartial(u);
       utterances.clear();
+      finalized.clear();
       if (state === 'error') return;
       if (want && mode === 'continuous' && !pausedByGuard) {
         // Browsers end sessions on their own (silence, time limits, iOS Safari after each phrase): start again.

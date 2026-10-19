@@ -54,4 +54,8 @@ export class ScriptedRecognizer implements RecognizerLike {
   final(text: string) {
     this.push(text, true);
   }
+  /** Deliver the results again from `index` on, as some recognizers do (iOS Safari in continuous mode). */
+  redeliver(index = 0) {
+    this.onresult?.({ resultIndex: index, results: this.results });
+  }
 }

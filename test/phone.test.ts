@@ -161,6 +161,24 @@ describe('createPhoneMic: transcripts', () => {
     expect(Math.abs(finals[0]!.speechEndAt - changed)).toBeLessThan(15);
   });
 
+  it('a final the recognizer delivers again is sent once', async () => {
+    const log = tvLog();
+    const m = mic({ mode: 'continuous', echoGuard: false });
+    const finals: string[] = [];
+    m.on('final', (f) => finals.push(f.text));
+    m.start();
+    const r = ScriptedRecognizer.last;
+    r.final('add ten pounds');
+    r.hear('and rest');
+    r.redeliver(0); // the earlier final again, alongside the open result
+    r.final('and rest');
+    r.redeliver(0);
+    await vi.waitFor(() => expect(log.finals).toHaveLength(2));
+    await settle();
+    expect(log.finals.map((f) => f.text)).toEqual(['add ten pounds', 'and rest']);
+    expect(finals).toEqual(['add ten pounds', 'and rest']);
+  });
+
   it('continuous mode restarts sessions the browser ends, until stop()', async () => {
     const m = mic({ mode: 'continuous', restartDelayMs: 20, echoGuard: false });
     m.start();
