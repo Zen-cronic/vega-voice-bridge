@@ -1,6 +1,6 @@
 {
   "name": "@rackboard/tv-voice-bridge",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "A voice back-and-forth harness for TV apps and agents: the phone listens, your app or agent answers, the TV shows it and says it, and playback is confirmed. A small WebSocket protocol, a hub and a client with per-hop latency stamps. Built for Fire TV (Vega OS), which has no app-level speech-to-text API.",
   "license": "MIT",
@@ -29,6 +29,11 @@
       "source": "./src/protocol.ts",
       "types": "./dist/protocol.d.ts",
       "default": "./dist/protocol.js"
+    },
+    "./qr": {
+      "source": "./src/qr.ts",
+      "types": "./dist/qr.d.ts",
+      "default": "./dist/qr.js"
     },
     "./package.json": "./package.json"
   },
@@ -78,6 +83,7 @@
   "devDependencies": {
     "@types/node": "^24.0.0",
     "@types/ws": "^8.18.2",
+    "jsqr": "^1.4.0",
     "typescript": "^5.9.0",
     "vitest": "^5.0.4",
     "ws": "^8.22.0"

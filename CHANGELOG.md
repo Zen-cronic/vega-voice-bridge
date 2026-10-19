@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased (0.3.0)
+
+The wire protocol is still **v1**. Everything below is additive.
+
+### Added
+- **`./qr`:** a dependency-free QR Code encoder written from ISO/IEC 18004, for the pairing screen. Byte mode (UTF-8, optional ECI 26), error correction L/M/Q/H (default M), versions 1 to 40, and automatic mask selection with the four penalty rules. `qrMatrix(text, {ecc})` returns `{size, version, ecc, mask, modules}`. `qrRuns()` merges each row's dark modules into runs, `qrSvgPath()` draws them as one SVG path, and `qrSvg()` returns a whole document with a quiet zone. `test/qr.test.ts` decodes every symbol with an independent decoder: all 40 versions at all four levels filled to the last byte (one pair, version 23 at level L, is checked structurally because the decoder's own table differs from the spec there), each mask, UTF-8, and each copy of the format and version information on its own.
+
 ## 0.2.0 (2026-10-18)
 
 The wire protocol is still **v1** (revision 2, see [PROTOCOL.md](PROTOCOL.md#revision-history)). 0.1 and 0.2 clients and hubs interoperate in both directions. The minor bump is for behaviour that is stricter than 0.1. That behaviour is listed under "Changed" below.
