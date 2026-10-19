@@ -19,53 +19,14 @@ export interface AssembledBatch {
   rejected: string[];
 }
 
-/** Find complete top-level JSON objects in `text`. Returns them, a count of skipped junk, and the incomplete tail. */
-function scan(text: string): { objects: string[]; junk: number; rest: string } {
-  const objects: string[] = [];
-  let junk = 0;
-  let i = 0;
-  const n = text.length;
-  while (i < n) {
-    const c = text.charCodeAt(i);
-    if (c === 32 || c === 9 || c === 10 || c === 13) {
-      i++;
-      continue;
-    }
-    if (c !== 123 /* { */) {
-      junk++;
-      const next = text.indexOf('{', i);
-      if (next < 0) return { objects, junk, rest: '' };
-      i = next;
-      continue;
-    }
-    let depth = 0;
-    let inStr = false;
-    let esc = false;
-    let j = i;
-    for (; j < n; j++) {
-      const ch = text.charCodeAt(j);
-      if (inStr) {
-        if (esc) esc = false;
-        else if (ch === 92 /* \ */) esc = true;
-        else if (ch === 34 /* " */) inStr = false;
-        continue;
-      }
-      if (ch === 34) inStr = true;
-      else if (ch === 123 || ch === 91) depth++;
-      else if (ch === 125 || ch === 93) {
-        depth--;
-        if (depth === 0) break;
-      }
-    }
-    if (j >= n) return { objects, junk, rest: text.slice(i) };
-    objects.push(text.slice(i, j + 1));
-    i = j + 1;
-  }
-  return { objects, junk, rest: '' };
-}
-
 export class MessageAssembler {
-  private pending = '';
+  // The message in progress: its pieces so far, and where the scan stands at their end. Each piece is scanned
+  // once, so reassembling a message costs time in proportion to its length, however many pieces it comes in.
+  private parts: string[] = [];
+  private partsLength = 0;
+  private depth = 0;
+  private inStr = false;
+  private esc = false;
   private pendingSince = 0;
   private readonly maxBytes: number;
   private readonly staleMs: number;
@@ -79,21 +40,26 @@ export class MessageAssembler {
 
   /** Characters buffered while waiting for the rest of a message. */
   get pendingLength(): number {
-    return this.pending.length;
+    return this.partsLength;
   }
 
   reset() {
-    this.pending = '';
+    this.parts = [];
+    this.partsLength = 0;
+    this.depth = 0;
+    this.inStr = false;
+    this.esc = false;
   }
 
   /** Feed one received frame. Never throws. */
   push(chunk: string): AssembledBatch {
     const out: AssembledBatch = { messages: [], rejected: [] };
-    if (this.pending && this.now() - this.pendingSince > this.staleMs) {
+    if (this.partsLength && this.now() - this.pendingSince > this.staleMs) {
       out.rejected.push('stale partial message dropped');
-      this.pending = '';
+      this.reset();
     }
-    if (!this.pending) {
+    const hadPending = this.partsLength > 0;
+    if (!hadPending) {
       // Fast path: the normal case, one whole message per frame.
       const r = decodeMessage(chunk);
       if (r.ok) {
@@ -105,14 +71,13 @@ export class MessageAssembler {
         return out;
       }
     }
-    const hadPending = this.pending.length > 0;
-    const { objects, junk, rest } = scan(this.pending + chunk);
+    const { objects, junk } = this.scan(chunk);
     if (hadPending) {
       // If the buffered piece never completes cleanly but this frame is a whole message by itself,
       // an earlier piece was lost: drop the buffer and keep the new message.
       const firstOk = objects.length > 0 && decodeMessage(objects[0]!).ok;
       if (!firstOk && decodeMessage(chunk).ok) {
-        this.pending = '';
+        this.reset();
         out.rejected.push('incomplete message dropped');
         const again = this.push(chunk);
         out.messages.push(...again.messages);
@@ -126,13 +91,77 @@ export class MessageAssembler {
       if (r.ok) out.messages.push(r.msg);
       else out.rejected.push(r.error);
     }
-    if (rest.length > this.maxBytes) {
+    if (this.partsLength > this.maxBytes) {
       out.rejected.push(`message larger than ${this.maxBytes} characters dropped`);
-      this.pending = '';
-    } else {
-      if (rest && rest !== this.pending) this.pendingSince = this.now();
-      this.pending = rest;
+      this.reset();
     }
     return out;
+  }
+
+  /**
+   * Scan one frame, carrying on with the message in progress. Returns the top-level JSON objects it completes and a
+   * count of skipped junk; an object still open at the end of the frame is kept for the next one.
+   */
+  private scan(text: string): { objects: string[]; junk: number } {
+    const objects: string[] = [];
+    let junk = 0;
+    let i = 0;
+    const n = text.length;
+    while (i < n) {
+      let start = 0;
+      if (!this.partsLength) {
+        const c = text.charCodeAt(i);
+        if (c === 32 || c === 9 || c === 10 || c === 13) {
+          i++;
+          continue;
+        }
+        if (c !== 123 /* { */) {
+          junk++;
+          const next = text.indexOf('{', i);
+          if (next < 0) return { objects, junk };
+          i = next;
+          continue;
+        }
+        start = i;
+        this.depth = 0;
+        this.inStr = false;
+        this.esc = false;
+      }
+      let { depth, inStr, esc } = this;
+      let j = i;
+      for (; j < n; j++) {
+        const ch = text.charCodeAt(j);
+        if (inStr) {
+          if (esc) esc = false;
+          else if (ch === 92 /* \ */) esc = true;
+          else if (ch === 34 /* " */) inStr = false;
+          continue;
+        }
+        if (ch === 34) inStr = true;
+        else if (ch === 123 || ch === 91) depth++;
+        else if (ch === 125 || ch === 93) {
+          depth--;
+          if (depth === 0) break;
+        }
+      }
+      if (j >= n) {
+        // The message continues in a later frame.
+        this.depth = depth;
+        this.inStr = inStr;
+        this.esc = esc;
+        const piece = start ? text.slice(start) : text;
+        if (piece.length) {
+          this.parts.push(piece);
+          this.partsLength += piece.length;
+          this.pendingSince = this.now();
+        }
+        return { objects, junk };
+      }
+      const tail = text.slice(start, j + 1);
+      objects.push(this.partsLength ? this.parts.join('') + tail : tail);
+      this.reset();
+      i = j + 1;
+    }
+    return { objects, junk };
   }
 }

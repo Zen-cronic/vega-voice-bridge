@@ -86,6 +86,42 @@ describe('split-message reassembly', () => {
     expect(a.push('{"type":"ping","t0":"x"}').rejected[0]).toMatch(/t0/);
   });
 
+  it('MessageAssembler: messages split at any point, mid-escape included, come out whole and in order', () => {
+    const one = JSON.stringify({ type: 'app', topic: 's', payload: { a: 'q \\" b \\\\ } { [ ]', n: [[1], { x: '}' }] } });
+    const two = JSON.stringify({ type: 'ping', t0: 7 });
+    const stream = `${one}\n${two}`;
+    for (let size = 1; size <= 9; size++) {
+      const a = new MessageAssembler();
+      const got: unknown[] = [];
+      const rejected: string[] = [];
+      for (let i = 0; i < stream.length; i += size) {
+        const r = a.push(stream.slice(i, i + size));
+        got.push(...r.messages);
+        rejected.push(...r.rejected);
+      }
+      expect(got).toEqual([JSON.parse(one), JSON.parse(two)]);
+      expect(rejected).toEqual([]);
+      expect(a.pendingLength).toBe(0);
+    }
+  });
+
+  it('MessageAssembler: a large message in many small pieces costs about what it costs in a few large ones', () => {
+    const msg = JSON.stringify({ type: 'app', topic: 'big', payload: { text: 'x'.repeat(600 * 1024) } });
+    const time = (piece: number) => {
+      const a = new MessageAssembler();
+      const t0 = performance.now();
+      let got = 0;
+      for (let i = 0; i < msg.length; i += piece) got += a.push(msg.slice(i, i + piece)).messages.length;
+      expect(got).toBe(1);
+      return performance.now() - t0;
+    };
+    time(64 * 1024); // warm up
+    const few = time(64 * 1024);
+    const many = time(1024);
+    // Rescanning the buffer on every piece made 600 pieces about 40 times slower than 10.
+    expect(many).toBeLessThan(few * 5 + 60);
+  });
+
   it('MessageAssembler: a lost fragment does not swallow the next whole message; stale and oversized partials are dropped', () => {
     let t = 0;
     const a = new MessageAssembler({ maxBytes: 64, staleMs: 100, now: () => t });
