@@ -12,7 +12,7 @@ import { realpathSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { BridgeHub, forwardedClient, proxyMatcher } from './hub.js';
+import { BridgeHub, forwardedClientKey, proxyMatcher } from './hub.js';
 import { lanAddress, servePhonePage } from './serve.js';
 
 const HELP = `Usage: tv-voice-bridge-hub [options]
@@ -122,11 +122,12 @@ export async function startHubCli(o: HubCliOptions, log: (line: string) => void 
   const reachable = o.host === '0.0.0.0' || o.host === '::' ? lanAddress() : o.host;
   const base = o.publicUrl ?? `http://${reachable}:${port}`;
   const joinUrl = (code: string) => (o.joinUrl ? o.joinUrl.split('{code}').join(code) : `${base}/p/${code}`);
+  const rateKey = o.trustProxy ? forwardedClientKey({ proxies: o.proxies, hops: o.proxyHops }) : undefined;
   const hub: BridgeHub = new BridgeHub({
     server,
     path: o.path,
     joinUrl,
-    rateKey: o.trustProxy ? (req) => forwardedClient(req, { proxies: o.proxies, hops: o.proxyHops }) : undefined,
+    rateKey,
     onFinal: o.echo
       ? (room, msg) => {
           hub.say(room, { id: `say_${msg.utteranceId}`, text: `You said: ${msg.text}`, priority: 'high' });

@@ -250,7 +250,7 @@ The scripted phone stamps `speech.end` when it sends the final, so a real phone'
 
 ```ts
 import http from 'node:http';
-import { BridgeHub, forwardedClient } from 'tv-voice-bridge/hub';   // needs `ws`
+import { BridgeHub, forwardedClientKey } from 'tv-voice-bridge/hub';   // needs `ws`
 
 const server = http.createServer(app);
 const hub = new BridgeHub({
@@ -262,7 +262,7 @@ const hub = new BridgeHub({
     return { name: 'reply', ok: true, payload: { text: msg.text, reply } };   // fanned out as an `intent`
   },
   onApp: (room, msg) => null,               // taps, nav, playback status; return an intent to answer a tracked one
-  rateKey: (req) => forwardedClient(req),   // behind a proxy: the address it appended to X-Forwarded-For
+  rateKey: forwardedClientKey(),            // behind a proxy: the address it appended to X-Forwarded-For
 });
 ```
 

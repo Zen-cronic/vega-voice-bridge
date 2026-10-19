@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
 import { isEntry, parseHubArgs, startHubCli } from '../src/cli.js';
-import { forwardedClient } from '../src/hub.js';
+import { forwardedClient, forwardedClientKey } from '../src/hub.js';
 import { BridgeClient, type IntentMsg, type SayPayload } from '../src/index.js';
 import { connectPhone } from '../src/phone.js';
 // @ts-expect-error plain-JS example without type declarations
@@ -121,6 +121,21 @@ describe('tv-voice-bridge-hub (CLI)', () => {
     // The socket fallbacks are bare too.
     expect(forwardedClient(req('::ffff:198.51.100.4', '203.0.113.7'))).toBe('198.51.100.4');
     expect(forwardedClient(req('::ffff:127.0.0.1'))).toBe('127.0.0.1');
+  });
+
+  it('forwardedClientKey checks the proxy list once, when it is built', () => {
+    const req = (remoteAddress: string, xff: string) => ({ socket: { remoteAddress }, headers: { 'x-forwarded-for': xff } }) as unknown as IncomingMessage;
+    expect(() => forwardedClientKey({ proxies: ['proxy.local'] })).toThrow(/not an address or CIDR range/);
+    const proxies = ['10.0.0.0/8'];
+    const key = forwardedClientKey({ proxies, hops: 2 });
+    // Built once: a later change to the array is not re-read on each request.
+    proxies.push('not an address');
+    expect(key(req('127.0.0.1', '6.6.6.6, 203.0.113.7, 10.0.0.9'))).toBe('203.0.113.7');
+    // A prebuilt matcher is used as it is.
+    const seen: string[] = [];
+    const trusted = (a: string) => (seen.push(a), a === '10.0.0.2');
+    expect(forwardedClientKey({ trusted })(req('10.0.0.2', '203.0.113.7'))).toBe('203.0.113.7');
+    expect(seen).toEqual(['10.0.0.2']);
   });
 
   it('a --proxy that is not an address or CIDR range is refused, not silently ignored', () => {

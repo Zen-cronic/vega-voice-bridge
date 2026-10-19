@@ -166,6 +166,8 @@ export interface ForwardedClientOptions {
   proxies?: string[];
   /** Proxies in front of the hub, each appending to `X-Forwarded-For`. Default 1. */
   hops?: number;
+  /** A prebuilt trusted-proxy test (`proxyMatcher(proxies)`), used instead of `proxies`. */
+  trusted?: (addr: string) => boolean;
 }
 
 const unmapped = (addr: string) => (addr.startsWith('::ffff:') ? addr.slice(7) : addr);
@@ -212,10 +214,37 @@ export function proxyMatcher(proxies: string[] = []): (addr: string) => boolean 
  * own address, never on what it wrote into the header. With no entries, the key is the socket's address. The key is
  * the bare IP: a port a proxy appended (`203.0.113.7:51544`, `[2001:db8::7]:443`) is dropped, so a new connection
  * does not get a new key.
+ *
+ * For a `rateKey` called on every upgrade, prefer `forwardedClientKey(o)`, which checks `proxies` once.
  */
 export function forwardedClient(req: IncomingMessage, o: ForwardedClientOptions = {}): string {
+  return clientKey(req, o.trusted ?? cachedMatcher(o.proxies), o.hops);
+}
+
+/**
+ * `forwardedClient` with its options fixed: `rateKey: forwardedClientKey({ proxies, hops })`. The proxy list is
+ * parsed once, here, so a malformed entry throws when the hub is set up, not on every upgrade.
+ */
+export function forwardedClientKey(o: ForwardedClientOptions = {}): (req: IncomingMessage) => string {
+  const trusted = o.trusted ?? proxyMatcher(o.proxies);
+  const hops = o.hops;
+  return (req) => clientKey(req, trusted, hops);
+}
+
+const matchers = new Map<string, (addr: string) => boolean>();
+function cachedMatcher(proxies: string[] = []): (addr: string) => boolean {
+  const key = proxies.join('\n');
+  let m = matchers.get(key);
+  if (!m) {
+    m = proxyMatcher(proxies);
+    if (matchers.size >= 64) matchers.clear();
+    matchers.set(key, m);
+  }
+  return m;
+}
+
+function clientKey(req: IncomingMessage, trusted: (addr: string) => boolean, hopsOpt: number | undefined): string {
   const peer = req.socket?.remoteAddress ?? 'unknown';
-  const trusted = proxyMatcher(o.proxies);
   if (!trusted(peer)) return bareIp(peer);
   const raw = req.headers['x-forwarded-for'];
   const entries = (Array.isArray(raw) ? raw.join(',') : (raw ?? ''))
@@ -223,7 +252,7 @@ export function forwardedClient(req: IncomingMessage, o: ForwardedClientOptions 
     .map((s) => s.trim())
     .filter(Boolean);
   if (entries.length === 0) return bareIp(peer);
-  const hops = Math.max(1, Math.floor(o.hops ?? 1));
+  const hops = Math.max(1, Math.floor(hopsOpt ?? 1));
   let i = entries.length - 1;
   for (let passed = 1; passed < hops && i > 0 && trusted(entries[i]!); passed++) i--;
   return bareIp(entries[i]!);
