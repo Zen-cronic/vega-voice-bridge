@@ -16,7 +16,7 @@
 import React, {useEffect, useRef, useState} from 'react';
 import {Text, View} from 'react-native';
 import {AudioPlayer} from '@amazon-devices/react-native-w3cmedia';
-import {BridgeClient} from '@rackboard/tv-voice-bridge';
+import {BridgeClient} from 'tv-voice-bridge';
 
 const HUB = 'ws://127.0.0.1:8800/ws';
 

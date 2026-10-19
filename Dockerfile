@@ -13,11 +13,11 @@ RUN npm run build && npm pack --ignore-scripts --pack-destination /tmp
 
 FROM node:22-alpine
 WORKDIR /app
-COPY --from=build /tmp/rackboard-tv-voice-bridge-*.tgz /tmp/
+COPY --from=build /tmp/tv-voice-bridge-*.tgz /tmp/
 RUN npm init -y >/dev/null \
-  && npm install --omit=dev --no-audit --no-fund /tmp/rackboard-tv-voice-bridge-*.tgz ws@8 \
-  && rm /tmp/rackboard-tv-voice-bridge-*.tgz
+  && npm install --omit=dev --no-audit --no-fund /tmp/tv-voice-bridge-*.tgz ws@8 \
+  && rm /tmp/tv-voice-bridge-*.tgz
 USER node
 EXPOSE 8790
 HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://127.0.0.1:8790/healthz || exit 1
-ENTRYPOINT ["node", "node_modules/@rackboard/tv-voice-bridge/dist/cli.js", "--port", "8790"]
+ENTRYPOINT ["node", "node_modules/tv-voice-bridge/dist/cli.js", "--port", "8790"]

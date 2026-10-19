@@ -12,14 +12,14 @@ What is in the package:
 
 | Import | What it is |
 |---|---|
-| `@rackboard/tv-voice-bridge` | The framework-agnostic client for both roles (React Native for Vega, web TVs, Node), plus the protocol types |
+| `tv-voice-bridge` | The framework-agnostic client for both roles (React Native for Vega, web TVs, Node), plus the protocol types |
 | `…/phone` | The voice half for a phone browser page: Web Speech in, transcripts out, with the [echo guard](#the-echo-guard) and barge-in |
 | `…/react` | `useVoiceBridge()` and `<PairingQr>` for the TV, with no native dependencies |
 | `…/hub` | The Node hub, and the `tv-voice-bridge-hub` CLI |
 | `…/qr` | A dependency-free QR Code encoder for the pairing screen |
 | [PROTOCOL.md](PROTOCOL.md) | The wire protocol (v1), for a second implementation on another platform |
 
-> MIT licensed. Package name and scope (`@rackboard/…`) are placeholders, and the package is marked `"private": true` until it is published. Current version: **0.3.0** (protocol v1, revision 3; see [CHANGELOG.md](CHANGELOG.md)).
+> MIT licensed. The package is `tv-voice-bridge`; it is marked `"private": true` and not on npm yet, so install it from git or a packed tarball (below). Current version: **0.3.0** (protocol v1, revision 3; see [CHANGELOG.md](CHANGELOG.md)).
 
 ## The whole loop in one command
 
@@ -130,14 +130,14 @@ Until then, pack it and install the tarball:
 
 ```bash
 npm pack --pack-destination ../my-app/vendor     # in this repo; builds first
-cd ../my-app && npm install ./vendor/rackboard-tv-voice-bridge-0.3.0.tgz
+cd ../my-app && npm install ./vendor/tv-voice-bridge-0.3.0.tgz
 ```
 
 For a live link while you edit the bridge (changes show up without re-packing), use `npm link`:
 
 ```bash
 npm run build && npm link                         # in this repo
-cd ../my-app && npm link @rackboard/tv-voice-bridge
+cd ../my-app && npm link tv-voice-bridge
 ```
 
 A linked package is a symlink outside the app's folder, so React Native for Vega's Metro bundler may not follow it without extra `watchFolders` config. Prefer the tarball for Vega builds and for anything a fresh clone must install. The hub needs `ws` (an optional peer dependency); the client needs nothing. `./react` needs `react` (18 or later) and a `react-native` that your bundler resolves (React Native for Vega, or react-native-web); both are optional peer dependencies that only `./react` imports.
@@ -164,7 +164,7 @@ startAgent({ respond, timeoutMs: 8000, fallback: "Sorry, I didn't catch that." }
 `./react` wraps the client for a React or React Native TV. It runs on React Native for Vega and react-native-web, and draws the QR code with plain `View`s.
 
 ```tsx
-import { PairingQr, useVoiceBridge } from '@rackboard/tv-voice-bridge/react';
+import { PairingQr, useVoiceBridge } from 'tv-voice-bridge/react';
 
 export function Screen() {
   const tv = useVoiceBridge({
@@ -220,7 +220,7 @@ See examples/vega-voice-loop.
 
 ```ts
 import http from 'node:http';
-import { BridgeHub } from '@rackboard/tv-voice-bridge/hub';   // needs `ws`
+import { BridgeHub } from 'tv-voice-bridge/hub';   // needs `ws`
 
 const server = http.createServer(app);
 const hub = new BridgeHub({
@@ -268,8 +268,8 @@ The CLI hub serves only the WebSocket and `/healthz`. The join URL must open a p
 The phone is a web page; nothing is installed on it. [`examples/minimal-phone/phone.html`](examples/minimal-phone/phone.html) is a complete one, with hold-to-talk, hands-free, a stop button and typed input.
 
 ```ts
-import { latency } from '@rackboard/tv-voice-bridge';
-import { connectPhone, createPhoneMic } from '@rackboard/tv-voice-bridge/phone';
+import { latency } from 'tv-voice-bridge';
+import { connectPhone, createPhoneMic } from 'tv-voice-bridge/phone';
 
 const phone = connectPhone();                       // hub URL and code from this page's address (/p/K7QF)
 phone.on('ack', (a) => show(latency(a.hops).span('speech.end', 'screen.render')));   // ms, across three devices
@@ -305,7 +305,7 @@ The TV side honours `screen.say.stop` in `useVoiceBridge` (default) and in the e
 The pairing screen shows the join URL as a QR code. `./qr` encodes it with no dependencies, so a TV app does not need a native QR module or an SVG renderer.
 
 ```ts
-import { qrMatrix, qrRuns, qrSvg, qrSvgPath } from '@rackboard/tv-voice-bridge/qr';
+import { qrMatrix, qrRuns, qrSvg, qrSvgPath } from 'tv-voice-bridge/qr';
 
 const m = qrMatrix(joinUrl);                  // { size, version, ecc: 'M', mask, modules: boolean[][] }, no quiet zone
 const d = qrSvgPath(m, { cell: 8, margin: 4 });   // one SVG path, dark modules merged into horizontal runs

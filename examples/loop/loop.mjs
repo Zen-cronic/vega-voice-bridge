@@ -8,9 +8,9 @@
 // reply, as a phone in the same room would, and the echo guard keeps it from coming back as a transcript.
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
-import { BridgeClient, latency } from '@rackboard/tv-voice-bridge';
-import { BridgeHub } from '@rackboard/tv-voice-bridge/hub';
-import { createPhoneMic } from '@rackboard/tv-voice-bridge/phone';
+import { BridgeClient, latency } from 'tv-voice-bridge';
+import { BridgeHub } from 'tv-voice-bridge/hub';
+import { createPhoneMic } from 'tv-voice-bridge/phone';
 
 const SCRIPT = ['what should I do next', 'log six reps at sixty kilos', 'how long do I rest'];
 const PRETEND_AUDIO_MS = 250; // how long the speakerless TV pretends each reply plays

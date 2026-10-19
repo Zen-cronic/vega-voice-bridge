@@ -6,7 +6,7 @@ import { createServer } from 'node:http';
 import { networkInterfaces } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BridgeHub } from '@rackboard/tv-voice-bridge/hub';
+import { BridgeHub } from 'tv-voice-bridge/hub';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const lib = resolve(here, '../../dist');

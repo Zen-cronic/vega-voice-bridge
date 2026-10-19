@@ -4,6 +4,9 @@
 
 The wire protocol is still **v1**. Everything below is additive.
 
+### Changed
+- The package is now `tv-voice-bridge` (it was `@rackboard/tv-voice-bridge`). Imports change their prefix only: `tv-voice-bridge`, `tv-voice-bridge/hub`, `tv-voice-bridge/react` and so on.
+
 ### Added
 - **`./qr`:** a dependency-free QR Code encoder written from ISO/IEC 18004, for the pairing screen. Byte mode (UTF-8, optional ECI 26), error correction L/M/Q/H (default M), versions 1 to 40, and automatic mask selection with the four penalty rules. `qrMatrix(text, {ecc})` returns `{size, version, ecc, mask, modules}`. `qrRuns()` merges each row's dark modules into runs, `qrSvgPath()` draws them as one SVG path, and `qrSvg()` returns a whole document with a quiet zone. `test/qr.test.ts` decodes every symbol with an independent decoder: all 40 versions at all four levels filled to the last byte (one pair, version 23 at level L, is checked structurally because the decoder's own table differs from the spec there), each mask, UTF-8, and each copy of the format and version information on its own.
 - **`./react`:** React bindings for the TV, with no native dependencies (React Native for Vega, react-native-web). `react` and `react-native` are optional peer dependencies, imported only by this subpath.
