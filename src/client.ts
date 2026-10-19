@@ -102,8 +102,11 @@ type AnyHandler = (arg?: unknown) => void;
 
 const timeOrigin = (): number =>
   typeof performance.timeOrigin === 'number' && performance.timeOrigin > 0 ? performance.timeOrigin : Date.now() - performance.now();
-/** Local epoch milliseconds from the monotonic clock. */
-const localNow = (): number => timeOrigin() + performance.now();
+/**
+ * Local epoch milliseconds from the monotonic clock: the time base that `sendFinal`'s `speechEndAt` and `ack`'s
+ * `receivedAt` expect. Works where `performance.timeOrigin` is missing.
+ */
+export const localNow = (): number => timeOrigin() + performance.now();
 
 function errorText(err: unknown): string {
   try {

@@ -6,6 +6,11 @@ The wire protocol is still **v1**. Everything below is additive.
 
 ### Added
 - **`./qr`:** a dependency-free QR Code encoder written from ISO/IEC 18004, for the pairing screen. Byte mode (UTF-8, optional ECI 26), error correction L/M/Q/H (default M), versions 1 to 40, and automatic mask selection with the four penalty rules. `qrMatrix(text, {ecc})` returns `{size, version, ecc, mask, modules}`. `qrRuns()` merges each row's dark modules into runs, `qrSvgPath()` draws them as one SVG path, and `qrSvg()` returns a whole document with a quiet zone. `test/qr.test.ts` decodes every symbol with an independent decoder: all 40 versions at all four levels filled to the last byte (one pair, version 23 at level L, is checked structurally because the decoder's own table differs from the spec there), each mask, UTF-8, and each copy of the format and version information on its own.
+- **`./react`:** React bindings for the TV, with no native dependencies (React Native for Vega, react-native-web). `react` and `react-native` are optional peer dependencies, imported only by this subpath.
+  - `useVoiceBridge(options)` connects a screen and returns `status` (`connecting`, `waiting-for-phone`, `paired`, `reconnecting`, `closed`), `code`, `joinUrl`, `peers`, `mics`, the live `partial`, the latest `final` and `intent`, and what is being said (`saying`). It acks each intent after the frame that shows it, so the `screen.render` hop is when the viewer could see it. Say lines (from the hub, or the TV's own `say(text)`) play one at a time through your `player`, `high` priority interrupts, and every state is reported on `screen.say.status`. Callbacks and the player are read from the latest render, and unmounting closes the connection.
+  - `<PairingQr value size? />` draws a QR code from `View`s, one per horizontal run of dark modules, with a quiet zone, whole-number cells and a `testID`.
+  - `test/react.test.ts` runs the hook against a real in-process hub and checks that PairingQr's views reproduce (and decode back to) the encoded matrix.
+- `localNow()`: local epoch milliseconds from the monotonic clock, the time base of `speechEndAt` and `receivedAt`.
 
 ## 0.2.0 (2026-10-18)
 
