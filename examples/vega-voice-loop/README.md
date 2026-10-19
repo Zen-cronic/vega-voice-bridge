@@ -9,7 +9,7 @@ phone (mic) ──transcript──▶ hub: respond(text) ──intent──▶ T
 
 ## Run it on the Vega Virtual Device
 
-Needs the Vega SDK, `ffmpeg`, and `espeak` (Linux) or `say` (macOS).
+Needs the Vega SDK, `ffmpeg`, and `espeak` (Linux) or `say` (macOS); or the AWS CLI for the optional Polly voice.
 
 ```bash
 # 1. the package, as a tarball the app installs
@@ -36,7 +36,7 @@ On a Fire TV Stick, set `npm run hub -- <LAN IP>:8790` before building, and inst
 ## What to change
 
 - **The agent:** `respond(text)` in `hub.mjs`. Rules, an LLM or an MCP tool; it returns what the TV says.
-- **The voice:** `tts.mjs` uses macOS `say` (`TTS_VOICE=<voice>`) or Linux `espeak`, or any command that writes a WAV: `TTS_CMD='my-tts "$TEXT" > "$OUT"'`. Clips are encoded as fragmented MP4/AAC, the format Vega's media player plays from a plain-http hub (raw MP3 does not).
+- **The voice:** `tts.mjs` uses macOS `say` (`TTS_VOICE=<voice>`) or Linux `espeak`, or any command that writes a WAV: `TTS_CMD='my-tts "$TEXT" > "$OUT"'`. For a natural cloud voice, `TTS_ENGINE=polly` calls Amazon Polly through the AWS CLI with its usual credentials (`AWS_PROFILE`): `POLLY_VOICE` (default `Ruth`), `POLLY_ENGINE` (default `generative`) and `AWS_REGION` (default `us-east-1`; not every engine is offered in every region). A clip is made once per reply text and cached. Clips are encoded as fragmented MP4/AAC, the format Vega's media player plays from a plain-http hub (raw MP3 does not).
 
 ## What is measured
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **`examples/vega-voice-loop`:** an optional Amazon Polly voice (`TTS_ENGINE=polly`, generative Ruth in us-east-1 by default) through the AWS CLI; local voices stay the default.
+
 ## 0.3.1
 
 The wire protocol is unchanged (v1, revision 3).
