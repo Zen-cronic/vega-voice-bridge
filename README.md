@@ -20,7 +20,7 @@ What is in the package:
 | `…/vega` | `createVegaSayPlayer()`: the TV speaks back on Vega OS, from a plain-http hub ([below](#the-tv-speaks-back-on-vega)) |
 | [PROTOCOL.md](PROTOCOL.md) | The wire protocol (v1), for a second implementation on another platform |
 
-> MIT licensed. The package is `tv-voice-bridge`; it is marked `"private": true` and not on npm yet, so install it from git or a packed tarball (below). Current version: **0.3.2** (protocol v1, revision 3; see [CHANGELOG.md](CHANGELOG.md)).
+> MIT licensed. The package is `tv-voice-bridge`; it is marked `"private": true` and not on npm yet, so install it from git or a packed tarball (below). Current version: **0.3.3** (protocol v1, revision 3; see [CHANGELOG.md](CHANGELOG.md)).
 
 ## The whole loop in one command
 
@@ -132,7 +132,7 @@ Until then, pack it and install the tarball:
 
 ```bash
 npm pack --pack-destination ../my-app/vendor     # in this repo; builds first
-cd ../my-app && npm install ./vendor/tv-voice-bridge-0.3.2.tgz
+cd ../my-app && npm install ./vendor/tv-voice-bridge-0.3.3.tgz
 ```
 
 For a live link while you edit the bridge (changes show up without re-packing), use `npm link`:
@@ -399,7 +399,7 @@ To keep a `clientId` across page reloads, persist **both** `client.clientId` and
 
 ## Tests
 
-`npm test` runs 230 tests in 12 files:
+`npm test` runs 234 tests in 12 files:
 
 - **Protocol conformance** (`test/conformance.test.ts`, 45), the reference for second implementations:
   - wire vectors for every message type;
@@ -414,7 +414,7 @@ To keep a `clientId` across page reloads, persist **both** `client.clientId` and
 - **React** (`test/react.test.ts`, 15), with react-test-renderer and a real hub: status transitions, ack-after-render hops, the say queue and its reports, interrupts, callback refs, cleanup, barge-in through `./phone`, and PairingQr's views reproducing and decoding to the matrix.
 - **QR** (`test/qr.test.ts`, 53): decode round trips (see [Pairing QR](#pairing-qr-qr)).
 - **Vega player** (`test/vega.test.ts`, 12), against a scripted stand-in for the W3C media player.
-- **Examples** (`test/example.test.ts`, 3; `test/agent.test.ts`, 3; `test/loop.test.ts`, 12; `test/tts.test.ts`, 5): the web TV server, the agent round trip with a stubbed `respond`, `npm run example`, the hub CLI (its phone page, `--path` and the proxy rules), and the voice loop's text-to-speech commands.
+- **Examples** (`test/example.test.ts`, 3; `test/agent.test.ts`, 3; `test/loop.test.ts`, 15; `test/tts.test.ts`, 6): the web TV server, the agent round trip with a stubbed `respond`, `npm run example`, the hub CLI (its phone page, `--path` and the proxy rules), and the voice loop's text-to-speech commands.
 
 ## Development
 
@@ -423,7 +423,7 @@ Requires Node 20 or later (developed on Node 24).
 ```bash
 npm install              # dev dependencies only; also builds dist/ (prepare)
 npm run typecheck        # tsc --noEmit over src/ and test/
-npm test                 # vitest: 230 tests, no build needed (tests import src/)
+npm test                 # vitest: 234 tests, no build needed (tests import src/)
 npm run example          # the whole loop in one process, with the hop timeline
 npm run hub -- --echo    # a standalone hub (the tv-voice-bridge-hub bin)
 npm run build            # cleans, then tsc -> dist/ (ESM + .d.ts + source maps)

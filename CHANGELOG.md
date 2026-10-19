@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.3
+
+The wire protocol is unchanged (v1, revision 3).
+
+### Fixed
+- **Hub, `forwardedClient`:** the rate key is the bare client address. A proxy that appends `ip:port` to `X-Forwarded-For` (`203.0.113.7:51544`, `[2001:db8::7]:443`) gave each new connection its own key, and with it a fresh hello and wrong-code budget. The socket fallback is bare too (`::ffff:` removed).
+- **Hub, `forwardedClient`:** the trusted-proxy list is no longer re-parsed on every upgrade; a matcher is kept per list.
+- **Hub CLI, `--proxy-hops`:** above 1 with no `--proxy`, the hub warns at startup that every client behind the outer proxy shares one rate-limit key.
+- **Hub CLI, `--path`:** a path with `$&`, `$'` or `` $` `` is written into the phone page as it is; it was expanded as a replacement pattern.
+- **`examples/vega-voice-loop`:** two requests for the same reply while its clip renders share one render, and each render uses its own work files. The first to finish used to remove the files the second was still reading, so that line went out with no audio.
+
+### Added
+- **`./hub`:** `forwardedClientKey({ proxies, hops, trusted })`, a ready `rateKey` that checks the proxy list once, when it is built. `forwardedClient` takes a prebuilt `trusted` matcher too.
+
 ## 0.3.2
 
 The wire protocol is unchanged (v1, revision 3).
