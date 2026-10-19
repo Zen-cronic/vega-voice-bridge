@@ -20,5 +20,6 @@ notes.md
 CLAUDE.md
 AGENTS.md
 
-# examples/vega-voice-loop: generated speech clips
+# examples/vega-voice-loop: generated speech clips and local listening samples
 examples/vega-voice-loop/.tts/
+examples/vega-voice-loop/samples/
