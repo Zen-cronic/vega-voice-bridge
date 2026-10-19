@@ -74,8 +74,32 @@ describe('the voice loop text-to-speech', () => {
     const other = await createTts({ dir, engine: { ...engine, name: 'espeak' }, run: r.run }).clip('Hello there.');
     expect(other.id).not.toBe(id);
     const [m4a, mp3] = r.calls as [Call, Call];
-    expect(m4a.args).toContain(join(dir, `${id}.polly.mp3`));
+    expect(m4a.args.some((a) => a.startsWith(join(dir, `${id}.`)) && a.endsWith('.polly.mp3'))).toBe(true);
     expect(m4a.args).toEqual(expect.arrayContaining(['-movflags', '+frag_keyframe+empty_moov+default_base_moof', join(dir, `${id}.m4a`)]));
     expect(mp3.args).toEqual(expect.arrayContaining(['libmp3lame', join(dir, `${id}.mp3`)]));
+  });
+
+  it('the same clip asked for twice while it renders is rendered once, and renders never share work files', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tts-'));
+    dirs.push(dir);
+    const r = recorder();
+    const bases: string[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((res) => (release = res));
+    const engine = { name: 'espeak', render: async (_t: string, base: string) => (bases.push(base), await gate, `${base}.wav`) };
+    const tts = createTts({ dir, engine, run: r.run });
+    const a = tts.clip('Same reply.');
+    const b = tts.clip('Same reply.');
+    const c = tts.clip('Another reply.');
+    release();
+    const [ra, rb, rc] = await Promise.all([a, b, c]);
+    expect(rb).toBe(ra);
+    expect(rc.id).not.toBe(ra.id);
+    expect(bases).toHaveLength(2);
+    // After it settles, a new render (nothing was written by the stand-in, so it renders again) gets its own files.
+    await tts.clip('Same reply.');
+    expect(bases).toHaveLength(3);
+    expect(new Set(bases).size).toBe(3);
+    for (const base of bases) expect(base).not.toBe(join(dir, ra.id));
   });
 });

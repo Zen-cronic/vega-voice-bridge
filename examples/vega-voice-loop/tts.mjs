@@ -42,20 +42,38 @@ export function ttsEngine(env = process.env, { run = exec, os = platform() } = {
   return { name: 'espeak', render: (text, base) => run('espeak', ['-s', '165', '-w', `${base}.wav`, text]).then(() => `${base}.wav`) };
 }
 
-/** Make (or reuse) the clips for `text`; returns the file id. */
+/**
+ * Make (or reuse) the clips for `text`; returns the file id. Two requests for the same clip while it renders share
+ * one render (two phones in a room, or the same reply twice), and each render works in files of its own, so one
+ * finishing never removes what another is still reading.
+ */
 export function createTts({ dir, engine = ttsEngine(), run = exec } = {}) {
   mkdirSync(dir, { recursive: true });
-  return {
-    engine: engine.name,
-    async clip(text) {
-      const id = createHash('sha256').update(`${engine.name}\n${text}`).digest('hex').slice(0, 16);
-      const base = join(dir, id);
-      if (existsSync(`${base}.m4a`)) return { id, cached: true };
-      const src = await engine.render(text, base);
+  const inFlight = new Map();
+  let seq = 0;
+  const make = async (id, text) => {
+    const base = join(dir, id);
+    if (existsSync(`${base}.m4a`)) return { id, cached: true };
+    const work = join(dir, `${id}.${process.pid}-${++seq}`);
+    let src;
+    try {
+      src = await engine.render(text, work);
       await run('ffmpeg', ['-loglevel', 'error', '-i', src, '-c:a', 'aac', '-b:a', '64k', '-ar', '44100', '-ac', '1', '-movflags', '+frag_keyframe+empty_moov+default_base_moof', '-frag_duration', '500000', '-f', 'mp4', '-y', `${base}.m4a`]);
       await run('ffmpeg', ['-loglevel', 'error', '-i', src, '-codec:a', 'libmp3lame', '-b:a', '48k', '-ac', '1', '-y', `${base}.mp3`]);
-      rmSync(src, { force: true });
-      return { id, cached: false };
+    } finally {
+      if (src) rmSync(src, { force: true });
+    }
+    return { id, cached: false };
+  };
+  return {
+    engine: engine.name,
+    clip(text) {
+      const id = createHash('sha256').update(`${engine.name}\n${text}`).digest('hex').slice(0, 16);
+      const pending = inFlight.get(id);
+      if (pending) return pending;
+      const p = make(id, text).finally(() => inFlight.delete(id));
+      inFlight.set(id, p);
+      return p;
     },
   };
 }
