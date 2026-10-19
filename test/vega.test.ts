@@ -18,6 +18,13 @@ const run = (player: ReturnType<typeof createVegaSayPlayer>, l: SayLine) => {
   return { seen, done, stop };
 };
 const settle = (ms = 80) => new Promise((r) => setTimeout(r, ms));
+/** A fetch whose body arrives only when the test says so (a clip still downloading). */
+const slowClip = () => {
+  let arrive!: () => void;
+  const body = new Promise<void>((r) => (arrive = r));
+  const fetch = async () => ({ ok: true, status: 200, headers: { get: () => 'audio/mp4' }, arrayBuffer: async () => (await body, new ArrayBuffer(4096)) });
+  return { fetch, arrive: () => arrive() };
+};
 
 beforeEach(() => media.reset());
 
@@ -68,6 +75,64 @@ describe('createVegaSayPlayer', () => {
     media.players[0]!.fire('ended');
     expect(r.seen).toEqual(['playing']);
   });
+  it('a line stopped while its clip downloads never reaches the player', async () => {
+    const slow = slowClip();
+    const p = createVegaSayPlayer({ fetch: slow.fetch });
+    const r = run(p, line('http://127.0.0.1:8790/tts/a1.m4a'));
+    await settle(20);
+    (r.stop as () => void)();
+    slow.arrive();
+    await settle();
+    expect(media.log.filter((e) => /^(addSourceBuffer|append|play)/.test(e))).toEqual([]);
+    expect(r.seen).toEqual([]);
+  });
+
+  it('a line stopped during the MSE setup appends and plays nothing', async () => {
+    const p = createVegaSayPlayer({ fetch: clip() });
+    let stop: (() => void) | null = null;
+    media.onSrcObject = (v) => {
+      if (v) stop?.();
+    };
+    const r = run(p, line('http://127.0.0.1:8790/tts/a1.m4a'));
+    stop = r.stop as () => void;
+    await settle();
+    expect(media.log.filter((e) => /^(append|play|endOfStream)/.test(e))).toEqual([]);
+    expect(r.seen).toEqual([]);
+  });
+
+  it('a stopped line\'s late clip cannot replace or end the next line', async () => {
+    const slow = slowClip();
+    const urls: string[] = [];
+    const p = createVegaSayPlayer({ fetch: async (u) => (urls.push(u), u.includes('a1') ? slow.fetch() : clip()()) });
+    const a = run(p, line('http://127.0.0.1:8790/tts/a1.m4a'));
+    await settle(20);
+    (a.stop as () => void)(); // barge-in, or a high-priority line
+    media.script = ['canplay', 'playing'];
+    const b = run(p, line('http://127.0.0.1:8790/tts/b1.m4a'));
+    await settle(20);
+    slow.arrive(); // A's download finishes while B plays
+    await settle();
+    expect(b.seen).toEqual(['playing']);
+    expect(media.log.filter((e) => e === 'play mse')).toHaveLength(1);
+    media.players[0]!.fire('ended');
+    expect(b.seen).toEqual(['playing', 'ended']);
+    expect(a.seen).toEqual([]);
+  });
+
+  it('a line superseded without a stop does not play when its download finishes', async () => {
+    const slow = slowClip();
+    const p = createVegaSayPlayer({ fetch: async (u) => (u.includes('a1') ? slow.fetch() : clip()()) });
+    const a = run(p, line('http://127.0.0.1:8790/tts/a1.m4a'));
+    await settle(20);
+    const b = run(p, line('http://127.0.0.1:8790/tts/b1.m4a'));
+    await b.done;
+    slow.arrive();
+    await settle();
+    expect(b.seen).toEqual(['playing', 'ended']);
+    expect(a.seen).toEqual([]);
+    expect(media.log.filter((e) => e.startsWith('append'))).toHaveLength(1);
+  });
+
   it('a media error reaches the line, and one player serves every line', async () => {
     media.script = ['error'];
     const p = createVegaSayPlayer({ fetch: clip() });

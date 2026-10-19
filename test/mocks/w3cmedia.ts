@@ -21,10 +21,13 @@ export const media = {
   supported: new Set(['audio/mp4; codecs="mp4a.40.2"', 'audio/mp4', 'audio/mpeg']),
   /** What play() leads to: the events, in order, each after a tick. */
   script: ['canplay', 'playing', 'ended'] as string[],
+  /** Called whenever a player's srcObject is set (a test can stop a line right there). */
+  onSrcObject: null as ((v: unknown) => void) | null,
   reset() {
     this.log = [];
     this.players = [];
     this.script = ['canplay', 'playing', 'ended'];
+    this.onSrcObject = null;
   },
 };
 
@@ -63,6 +66,7 @@ export class AudioPlayer extends Events {
   }
   set srcObject(v: unknown) {
     this.obj = v;
+    media.onSrcObject?.(v);
     if (v instanceof MediaSource) void tick().then(() => v.fire('sourceopen'));
   }
   async initialize() {

@@ -22,6 +22,7 @@ export interface VegaSayPlayerOptions {
   fetch?: (url: string) => Promise<{ ok: boolean; status: number; headers: { get(name: string): string | null }; arrayBuffer(): Promise<ArrayBuffer> }>;
 }
 
+/** One line at a time: starting a line supersedes the one before, which never touches the player again. */
 export interface VegaSayPlayer extends SayPlayer {
   /** Create and initialize the media player now, so the first line is not delayed by it. */
   warm(): Promise<void>;
@@ -53,24 +54,27 @@ export function createVegaSayPlayer(opts: VegaSayPlayerOptions = {}): VegaSayPla
   const eosWaitMs = opts.eosWaitMs ?? 3000;
   const get = opts.fetch ?? ((url: string) => fetch(url));
   let ready: Promise<Player | null> | null = null;
-  let current: SayControls | null = null; // the line the player's events belong to
+  let latest = 0; // the newest line; an older one never touches the player again
+  // The line whose source is on the player. Media events go to it and to no other line, so a line that was
+  // stopped or superseded cannot report for (or end) the next one.
+  let owner: { line: number; ctl: SayControls } | null = null;
+  const release = () => {
+    const o = owner;
+    owner = null;
+    return o;
+  };
 
   const player = () =>
     (ready ??= (async () => {
       try {
         const p = new AudioPlayer();
         await p.initialize();
-        p.addEventListener('playing', () => current?.playing());
-        p.addEventListener('ended', () => {
-          const c = current;
-          current = null;
-          c?.ended();
-        });
+        p.addEventListener('playing', () => owner?.ctl.playing());
+        p.addEventListener('ended', () => release()?.ctl.ended());
         p.addEventListener('error', () => {
-          const c = current;
-          current = null;
+          const o = release();
           const e = p.error;
-          c?.error(e ? `MediaError ${e.code ?? '?'} ${e.message ?? ''}`.trim() : 'media error');
+          o?.ctl.error(e ? `MediaError ${e.code ?? '?'} ${e.message ?? ''}`.trim() : 'media error');
         });
         return p;
       } catch {
@@ -81,13 +85,16 @@ export function createVegaSayPlayer(opts: VegaSayPlayerOptions = {}): VegaSayPla
   // Feed one fragmented MP4 clip through MSE. Ending the stream before the demuxer has the stream fails
   // (DEMUXER_INVALID_STATE), and a short clip may not start until the stream is ended, so: append, play,
   // wait for the first sign the demuxer has it (metadata, canplay or playing), then end the stream.
-  async function viaMse(p: Player, bytes: ArrayBuffer) {
+  // `live()` turns false once the line is stopped or superseded: from then on the clip goes no further.
+  async function viaMse(p: Player, bytes: ArrayBuffer, live: () => boolean, claim: () => void) {
     const type = MP4_TYPES.find((t) => MediaSource.isTypeSupported(t, true));
     if (!type) throw new Error('MSE: no supported MP4/AAC type');
     const ms = new MediaSource();
     const opened = new Promise<void>((resolve) => ms.addEventListener('sourceopen', () => resolve()));
+    claim();
     p.srcObject = ms;
     await within(opened, 4000, 'sourceopen');
+    if (!live()) return;
     const sb = ms.addSourceBuffer(type);
     await within(
       new Promise<void>((resolve, reject) => {
@@ -98,48 +105,61 @@ export function createVegaSayPlayer(opts: VegaSayPlayerOptions = {}): VegaSayPla
       6000,
       'appendBuffer',
     );
+    if (!live()) return;
     let took!: () => void;
     const sign = new Promise<void>((resolve) => (took = resolve));
     const signs = ['loadedmetadata', 'canplay', 'playing'];
     const onSign = () => took();
     for (const s of signs) p.addEventListener(s, onSign);
     await p.play();
-    await Promise.race([sign, new Promise((r) => setTimeout(r, eosWaitMs))]);
+    if (live()) await Promise.race([sign, new Promise((r) => setTimeout(r, eosWaitMs))]);
     for (const s of signs) p.removeEventListener(s, onSign);
-    ms.endOfStream();
+    if (live()) ms.endOfStream();
   }
 
   const play = ((line: SayLine, ctl: SayControls) => {
+    const mine = ++latest;
     let stopped = false;
     let held: Player | null = null;
+    let mse = false;
+    // Checked after every await: a line stopped or superseded meanwhile must not reach the player.
+    const live = () => !stopped && latest === mine;
+    const claim = () => void (owner = { line: mine, ctl });
     void (async () => {
       const url = line.audioUrl ? resolve(line.audioUrl, opts.baseUrl) : null;
       if (!url) return ctl.error(line.audioUrl ? `relative audioUrl ${line.audioUrl} needs baseUrl` : 'no audioUrl');
       const p = await player();
-      if (stopped) return;
+      if (!live()) return;
       if (!p) return ctl.error('the Vega media player is unavailable');
       held = p;
-      current = ctl;
       if (/^https:/i.test(url)) {
+        claim();
         p.src = url;
         await p.play();
         return;
       }
       const res = await get(url);
-      if (stopped) return;
+      if (!live()) return;
       if (!res.ok) throw new Error(`GET ${url} -> HTTP ${res.status}`);
       if (!isMp4(url, res.headers.get('content-type'))) throw new Error(RAW_HTTP_AUDIO);
-      await viaMse(p, await res.arrayBuffer());
+      const bytes = await res.arrayBuffer();
+      if (!live()) return;
+      mse = true;
+      await viaMse(p, bytes, live, claim);
     })().catch((err: unknown) => {
-      if (stopped) return;
-      if (current === ctl) current = null;
+      if (!live()) return;
+      if (owner?.line === mine) owner = null;
       ctl.error(err instanceof Error ? err.message : String(err));
     });
     return () => {
       stopped = true;
-      if (current === ctl) current = null;
+      // Only the line on the player stops it: a line still downloading has nothing to pause.
+      if (owner?.line !== mine) return;
+      owner = null;
       try {
         held?.pause();
+        // Detach the stream too, so nothing more of it is demuxed or played.
+        if (mse && held) held.srcObject = null;
       } catch {
         // the player may be between sources
       }
@@ -150,7 +170,7 @@ export function createVegaSayPlayer(opts: VegaSayPlayerOptions = {}): VegaSayPla
   play.dispose = async () => {
     const p = await (ready ?? Promise.resolve(null));
     ready = null;
-    current = null;
+    owner = null;
     await p?.deinitialize().catch(() => {});
   };
   return play;
