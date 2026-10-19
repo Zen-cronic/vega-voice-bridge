@@ -109,7 +109,7 @@ export interface SayPayload {
   id: string;
   /** What is said, also the caption. */
   text: string;
-  /** Absolute https URL (needed on Vega, whose media player refuses http and private CAs) or hub-relative path. */
+  /** Absolute URL or hub-relative path. On Vega: publicly trusted https, or fragmented MP4/AAC over http (see `./vega`). */
   audioUrl?: string;
   /** Spoken length; also how long a caption-only screen keeps the caption up. */
   durationMs?: number;

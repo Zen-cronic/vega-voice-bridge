@@ -48,6 +48,11 @@
       "types": "./dist/react.d.ts",
       "default": "./dist/react.js"
     },
+    "./vega": {
+      "source": "./src/vega.ts",
+      "types": "./dist/vega.d.ts",
+      "default": "./dist/vega.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -87,7 +92,8 @@
   "peerDependencies": {
     "react": ">=18",
     "react-native": "*",
-    "ws": "^8"
+    "ws": "^8",
+    "@amazon-devices/react-native-w3cmedia": ">=2"
   },
   "peerDependenciesMeta": {
     "react": {
@@ -97,6 +103,9 @@
       "optional": true
     },
     "ws": {
+      "optional": true
+    },
+    "@amazon-devices/react-native-w3cmedia": {
       "optional": true
     }
   },
