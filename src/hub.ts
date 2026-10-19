@@ -111,6 +111,14 @@ export interface HubOptions {
    * a screen reports. Phones use it to keep the TV's voice out of the microphone. Default true.
    */
   speechNotices?: boolean;
+  /**
+   * WebSocket subprotocols the hub may select. It answers with the first one the client offers that is on this
+   * list, and with none when the client offers none of them (a browser that offered some then fails the
+   * connection). Default: none, so the hub never answers with a subprotocol. A client may carry a credential as a
+   * subprotocol next to the app's own (`['my-app', 'k.<token>']`); listing only `'my-app'` keeps the hub from
+   * copying the credential into its response, where proxies and tunnel inspectors record headers.
+   */
+  protocols?: string[];
 }
 
 /** Counters for observability (and tests). */
@@ -257,7 +265,13 @@ export class BridgeHub {
     this.random = opts.random ?? secureRandom;
     this.hellos = new FixedWindow(this.limits.hellosPerMinute, 60_000);
     this.misses = new FixedWindow(this.limits.codeMissesPerMinute, 60_000);
-    this.wss = new WebSocketServer({ noServer: true, maxPayload: this.limits.maxMessageBytes });
+    // Without handleProtocols, ws echoes the first subprotocol the client offers, whatever it is.
+    const selectable = new Set(opts.protocols ?? []);
+    const handleProtocols = (offered: Set<string>): string | false => {
+      for (const p of offered) if (selectable.has(p)) return p;
+      return false;
+    };
+    this.wss = new WebSocketServer({ noServer: true, maxPayload: this.limits.maxMessageBytes, handleProtocols });
     this.wss.on('error', (err) => this.log('wss-error', { error: errorText(err) }));
     this.servers = Array.isArray(opts.server) ? opts.server : [opts.server];
     for (const srv of this.servers) srv.on('upgrade', this.onUpgrade);

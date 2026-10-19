@@ -272,6 +272,7 @@ The hub is defensive by construction. No frame, upgrade request or app callback 
 |---|---|---|
 | `roomGraceMs` | 60 s | A room closes this long after its last screen leaves |
 | `heartbeatMs` | 15 s | Protocol ping interval; two missed pings terminate the socket |
+| `protocols` | none | WebSocket subprotocols the hub may select (the first one offered that is listed); with none listed it never answers with one |
 | `limits.maxMessageBytes` | 256 KiB | Frame cap |
 | `limits.maxRooms` | 10,000 | Rooms the hub keeps at once |
 | `limits.maxPeersPerRoom` | 32 | Peers per room |
@@ -379,6 +380,7 @@ To keep a `clientId` across page reloads, persist **both** `client.clientId` and
 - **Guessing is throttled.** After 30 hellos a minute from one rate key that name a code no live room has, hellos naming a code are refused. That includes a screen probing codes, since a screen may join a room by its code. Codes are generated with the platform CSPRNG and never collide with a live room.
 - **Rooms do not outlive the TV.** A mic can join only a room whose screen is present, or left less than `roomGraceMs` ago. Rooms live in memory and disappear when the hub restarts; the TV re-creates its code on reconnect.
 - **Behind a tunnel or reverse proxy, set `rateKey`.** There, every client shares one remote address. Serve **https/wss** beyond the LAN, rotate codes per session, and consider an on-screen confirm.
+- **A credential sent as a subprotocol stays out of the response.** Some apps send a token as a WebSocket subprotocol next to their own (`['my-app', 'k.<token>']`) to keep it out of URLs. The hub answers only with a subprotocol listed in `protocols` (`protocols: ['my-app']`), never the first one offered, so the token is not copied into a response header that proxies and tunnel inspectors record.
 - **`clientId` is not a secret.** It is shown to the room. A live `clientId` can be taken over only with its `resumeToken`, or once the holder stops answering pings.
 - **`screen.say` audio URLs are bearer links.** Use short-lived presigned URLs, not public buckets, and never log the query string. The hub's `screen.speech` notices to phones never include them.
 - **The hub runs no LLM and stores nothing.** What `onFinal` does with transcripts is your app's privacy surface.

@@ -3,7 +3,7 @@
  * pairing limits, clientId binding, heartbeat and backpressure. Black-box over raw sockets where possible.
  * A crash path here surfaces as an unhandled error, which fails the vitest run.
  */
-import { createServer, type Server } from 'node:http';
+import { createServer, request, type Server } from 'node:http';
 import net, { type Socket } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
@@ -188,6 +188,49 @@ describe('crash regressions: each input below killed the 0.1.0 hub process', () 
       { clientId: 'tv_b', role: 'screen', name: undefined },
       { clientId: 'roamer', role: 'mic', name: 'moved' },
     ]);
+  });
+});
+
+/** Raw upgrade offering `protocols`: the Sec-WebSocket-Protocol the hub answers with (undefined for none). */
+function selected(port: number, protocols: string): Promise<string | undefined> {
+  return new Promise((resolve, reject) => {
+    const req = request({
+      port,
+      host: '127.0.0.1',
+      path: '/ws',
+      headers: { connection: 'Upgrade', upgrade: 'websocket', 'sec-websocket-version': '13', 'sec-websocket-key': 'dGhlIHNhbXBsZSBub25jZQ==', 'sec-websocket-protocol': protocols },
+    });
+    req.on('upgrade', (res, socket) => {
+      socket.destroy();
+      resolve(res.headers['sec-websocket-protocol'] as string | undefined);
+    });
+    req.on('response', (res) => reject(new Error(`no upgrade: ${res.statusCode}`)));
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+describe('subprotocols', () => {
+  // A synthetic credential, offered the way an app might carry a pair token.
+  const token = 'k.c3ludGhldGljLXRva2Vu';
+
+  it('the hub never answers with a subprotocol it was not told it may select', async () => {
+    const { port } = await start();
+    expect(await selected(port, `${token}, my-app`)).toBeUndefined();
+    expect(await selected(port, token)).toBeUndefined();
+    expect(await selected(port, 'my-app')).toBeUndefined();
+  });
+
+  it('with protocols, it selects the first listed one the client offers, in any order, and never the credential', async () => {
+    const { port, url } = await start({ protocols: ['my-app'] });
+    expect(await selected(port, `my-app, ${token}`)).toBe('my-app');
+    expect(await selected(port, `${token}, my-app`)).toBe('my-app');
+    expect(await selected(port, token)).toBeUndefined();
+    // A real client that offers it gets a working connection with that protocol.
+    const ws = new WebSocket(url, [token, 'my-app']);
+    cleanups.push(() => ws.terminate());
+    await new Promise((r, j) => (ws.once('open', r), ws.once('error', j)));
+    expect(ws.protocol).toBe('my-app');
   });
 });
 
