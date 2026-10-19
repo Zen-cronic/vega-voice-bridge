@@ -1,9 +1,20 @@
 # Changelog
 
-## Unreleased
+## 0.3.2
+
+The wire protocol is unchanged (v1, revision 3).
+
+### Fixed
+- **Hub, subprotocols:** the hub no longer answers with the first WebSocket subprotocol a client offers. A client that carried a token as a subprotocol and offered it first got it back in the `Sec-WebSocket-Protocol` response header, where proxies and tunnel inspectors record it. The new `protocols` option lists the subprotocols the hub may select; it answers with the first listed one the client offers, and with none listed it answers with no subprotocol. **An app whose clients offer a subprotocol must now list it in `protocols`**, or browsers fail the connection.
+- **Hub CLI, `--proxy-hops`:** `forwardedClient` read the entry `hops` places from the end of `X-Forwarded-For` without checking the entries after it, so a client that reached the inner proxy directly (skipping the CDN) chose its own rate key on every upgrade. It now reads from the end and passes over an entry only when it is loopback or a named proxy. `--proxy` and `proxies` take CIDR ranges, for a CDN's published ranges, and a malformed one is refused. With two hops and the outer proxy not named, every client through it shares its key.
+- **Hub CLI, `--path`:** the phone page it serves now connects to the hub's path. It always used `/ws`, so with `--path` the printed join URL never connected. The page reads the path from its `tv-voice-bridge-path` meta tag, which the hub fills in.
+- **Hub CLI:** importing the CLI module no longer starts a hub when the importer's entry file is called `cli.js`; it starts only when Node's entry resolves to the CLI itself or its bin link.
+- **`examples/vega-voice-loop`:** the Polly voice passes the reply to the AWS CLI in a temp file (`--text file://<path>`), not as `--text=<reply>`. The CLI loads a value that starts with `file://` or `fileb://` (v1 also fetches `http(s)://`), so a reply beginning with one would have been replaced by that file.
 
 ### Added
-
+- **`./serve`:** `servePhonePage(req, res, { path })` and `lanAddress()`, moved out of the CLI, so an app built on `BridgeHub` can serve the shipped phone page. The Vega voice-loop example imports them from `tv-voice-bridge/serve` instead of `dist/cli.js`.
+- **`./phone`:** `connectPhone({ path })`, the hub's WebSocket path on the page's host.
+- **`./hub`:** `proxyMatcher(proxies)`, the trusted-proxy test `forwardedClient` uses (loopback, addresses and CIDR ranges).
 - **`examples/vega-voice-loop`:** an optional Amazon Polly voice (`TTS_ENGINE=polly`, generative Ruth in us-east-1 by default) through the AWS CLI; local voices stay the default.
 
 ## 0.3.1
