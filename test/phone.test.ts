@@ -146,6 +146,24 @@ describe('createPhoneMic: transcripts', () => {
     expect(m.state).toBe('idle');
   });
 
+  it('a speechend that comes before the first result still marks speech.end', async () => {
+    const log = tvLog();
+    const m = mic({ echoGuard: false });
+    const finals: Array<{ speechStartAt: number; speechEndAt: number }> = [];
+    m.on('final', (f) => finals.push(f));
+    m.start();
+    const r = ScriptedRecognizer.last;
+    r.onspeechstart?.({});
+    await settle(30);
+    r.onspeechend?.({}); // a short phrase: speech ends before the recognizer has any result
+    const ended = performance.timeOrigin + performance.now();
+    await settle(60);
+    r.final('yes');
+    await vi.waitFor(() => expect(log.finals).toHaveLength(1));
+    expect(Math.abs(finals[0]!.speechEndAt - ended)).toBeLessThan(15);
+    expect(finals[0]!.speechEndAt - finals[0]!.speechStartAt).toBeGreaterThanOrEqual(25);
+  });
+
   it('speech.end falls back to the last interim change when the recognizer has no speechend event', async () => {
     const log = tvLog();
     const m = mic({ echoGuard: false });

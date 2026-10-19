@@ -503,8 +503,8 @@ export function createPhoneMic(opts: PhoneMicOptions): PhoneMic {
       if (!u) {
         const startAt = speechStartAt !== null && speechStartAt <= t ? speechStartAt : t;
         u = { id: newId('utt'), startAt, lastChangeAt: t, text: '', suspect: false, barged: false, partialSentAt: -Infinity, partialTimer: null, done: false };
+        // speechEndAt stays: a short phrase can end (speechend) before its first result arrives.
         speechStartAt = null;
-        speechEndAt = null;
         utterances.set(key, u);
       }
       if (text !== u.text) {
@@ -533,6 +533,9 @@ export function createPhoneMic(opts: PhoneMicOptions): PhoneMic {
       clearPartial(u);
       utterances.delete(key);
       finalized.add(key);
+      // A final consumes the speechend it had, sent or not, so the next utterance cannot inherit it.
+      const heardEnd = speechEndAt;
+      speechEndAt = null;
       if (!text) continue;
       if (blocked) {
         emit('dropped', { text, reason: 'echo' });
@@ -542,9 +545,8 @@ export function createPhoneMic(opts: PhoneMicOptions): PhoneMic {
         emit('dropped', { text, reason: 'echo-text' });
         continue;
       }
-      const end = Math.min(t, speechEndAt !== null && speechEndAt >= u.startAt ? speechEndAt : u.lastChangeAt);
+      const end = Math.min(t, heardEnd !== null && heardEnd >= u.startAt ? heardEnd : u.lastChangeAt);
       const final: PhoneMicFinal = { utteranceId: u.id, text, speechStartAt: Math.min(u.startAt, end), speechEndAt: end };
-      speechEndAt = null;
       if (client.sendFinal(text, { utteranceId: final.utteranceId, speechStartAt: final.speechStartAt, speechEndAt: final.speechEndAt }) === null) {
         emit('dropped', { text, reason: 'not-connected' });
         continue;
