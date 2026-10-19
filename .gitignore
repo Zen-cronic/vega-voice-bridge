@@ -19,3 +19,6 @@ coverage/
 notes.md
 CLAUDE.md
 AGENTS.md
+
+# examples/vega-voice-loop: generated speech clips
+examples/vega-voice-loop/.tts/

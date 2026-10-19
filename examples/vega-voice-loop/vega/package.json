@@ -1,0 +1,33 @@
+{
+  "name": "@amazon-devices/voiceloop",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "hub": "node -e \"require('fs').writeFileSync('src/hub.json', JSON.stringify({hostport: process.argv[1] || '127.0.0.1:8790'}) + '\\\\n')\"",
+    "build": "react-native build-vega --build-type Release",
+    "build:debug": "react-native build-vega --build-type Debug"
+  },
+  "dependencies": {
+    "@amazon-devices/react-native-kepler": "~4.0.0",
+    "@amazon-devices/react-native-w3cmedia": "~2.3.2",
+    "react": "19.2.0",
+    "react-native": "0.83.0",
+    "tv-voice-bridge": "file:../../../tv-voice-bridge-0.3.0.tgz"
+  },
+  "devDependencies": {
+    "@amazon-devices/kepler-cli-platform": "^0",
+    "@react-native-community/cli": "20.0.0",
+    "@react-native/babel-preset": "0.83.0",
+    "@react-native/metro-config": "0.83.0",
+    "@react-native/typescript-config": "0.83.0",
+    "@types/react": "^19.2.0",
+    "typescript": "5.8.3"
+  },
+  "kepler": {
+    "projectType": "application",
+    "appName": "voiceloop",
+    "targets": [
+      "tv"
+    ]
+  }
+}

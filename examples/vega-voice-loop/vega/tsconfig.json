@@ -1,0 +1,7 @@
+{
+  "extends": "@react-native/typescript-config",
+  "compilerOptions": {
+    "types": ["@amazon-devices/react-native-kepler"], "resolveJsonModule": true
+  },
+  "exclude": ["node_modules", "build", "dist"]
+}

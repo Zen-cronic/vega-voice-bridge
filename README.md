@@ -17,6 +17,7 @@ What is in the package:
 | `…/react` | `useVoiceBridge()` and `<PairingQr>` for the TV, with no native dependencies |
 | `…/hub` | The Node hub, and the `tv-voice-bridge-hub` CLI |
 | `…/qr` | A dependency-free QR Code encoder for the pairing screen |
+| `…/vega` | `createVegaSayPlayer()`: the TV speaks back on Vega OS, from a plain-http hub ([below](#the-tv-speaks-back-on-vega)) |
 | [PROTOCOL.md](PROTOCOL.md) | The wire protocol (v1), for a second implementation on another platform |
 
 > MIT licensed. The package is `tv-voice-bridge`; it is marked `"private": true` and not on npm yet, so install it from git or a packed tarball (below). Current version: **0.3.0** (protocol v1, revision 3; see [CHANGELOG.md](CHANGELOG.md)).
@@ -83,6 +84,7 @@ Every utterance carries `hops: [{hop, at}]` in **hub clock**. Each client estima
 |---|---|
 | Phone tap → VVD render (reverse port forward) | 6–69 ms (hub → screen 0–38 ms, render 5–27 ms) |
 | Hub `screen.say` → audio playing on the VVD (S3 presigned mp3) | 166–224 ms after load; tap → audio start 378–391 ms |
+| The whole voice loop on the VVD, plain-http hub, fragmented MP4/AAC ([`examples/vega-voice-loop`](examples/vega-voice-loop)) | speech end → shown 11–46 ms; say → playing 72–175 ms; **speech end → reply audible 217–322 ms** (4 of 4 replies played to the end) |
 | Web TV, same host | under 40 ms end to end |
 
 ## Why
@@ -200,7 +202,7 @@ const tv = new BridgeClient({ url: 'ws://127.0.0.1:8800/ws', role: 'screen' });
 tv.on('welcome', (w) => setCode(w.code));                                  // show the code (and a QR of w.joinUrl)
 tv.on('status', (s) => setStatus(s));                                      // connecting / open / reconnecting / closed
 tv.on('intent', (m) => { render(m.payload); requestAnimationFrame(() => tv.ack(m)); });
-tv.onSay((line) => play(line.audioUrl) /* https only on Vega */ || caption(line.text, line.durationMs));
+tv.onSay((line) => play(line.audioUrl) /* see ./vega */ || caption(line.text, line.durationMs));
 tv.connect().catch(() => undefined);                                       // keeps retrying until tv.close()
 ```
 
@@ -208,13 +210,41 @@ tv.connect().catch(() => undefined);                                       // ke
 
 - **WebSocket and the VVD.** React Native's global `WebSocket` works. On the VVD, reach a hub on your machine with a **reverse port forward**, `vega device start-port-forwarding --port 8800 --forward false`, and connect to `ws://127.0.0.1:8800/ws`. The emulator's NAT alias `10.0.2.2` intermittently dropped WebSocket frames larger than about 1.4 KB in our tests. On a real stick, use the dev machine's LAN IP.
 - **Built-in client defences.** The client reassembles messages that arrive split across events, and its heartbeat drops a link that goes silent even when `onclose` never fires.
-- **Audio must be public https.** The W3C media player (`@amazon-devices/react-native-w3cmedia`) **plays only publicly trusted https URLs**. It refuses `http://` and a local CA, and raw-mp3 MSE never initialized for us. For `screen.say` audio, upload the clip and send a presigned https URL (we use S3 with a 1 h expiry), or fall back to captions and report `no-audio`.
+- **Audio: https in URL mode, or fragmented MP4/AAC over plain http.** The W3C media player (`@amazon-devices/react-native-w3cmedia`) plays an `https://` URL only with a publicly trusted certificate (a local CA is refused). Over `http://` it plays only through Media Source Extensions, and only fragmented MP4 with AAC: raw MP3 through MSE never starts. `./vega` handles both; see [The TV speaks back on Vega](#the-tv-speaks-back-on-vega).
 - **Metro, only when bundling from source.** The package source uses TS-ESM imports (`./protocol.js`), so map them to `.ts` in a custom `resolveRequest`. A custom resolver replaces Vega's own, so also re-apply the `react-native` → `@amazon-devices/react-native-kepler` mapping. Without that mapping the bundle ships core React Native and the app aborts at launch. See [`examples/minimal-vega/metro.config.js`](examples/minimal-vega/metro.config.js).
 - **`performance.timeOrigin`.** It may be missing on some runtimes. The client falls back on its own; polyfill it as `Date.now() - performance.now()` if your code stamps `receivedAt` itself.
 
 ## The TV speaks back on Vega
 
-See examples/vega-voice-loop.
+`tv-voice-bridge/vega` is a `SayPlayer` for `useVoiceBridge` built on Vega's W3C media player (`@amazon-devices/react-native-w3cmedia`, an optional peer dependency):
+
+```tsx
+import { PairingQr, useVoiceBridge } from 'tv-voice-bridge/react';
+import { createVegaSayPlayer } from 'tv-voice-bridge/vega';
+
+const player = useMemo(() => createVegaSayPlayer({ baseUrl: 'http://127.0.0.1:8790' }), []);
+const tv = useVoiceBridge({ url: 'ws://127.0.0.1:8790/ws', player });
+// tv.joinUrl -> <PairingQr value={tv.joinUrl} />, tv.final?.text, tv.intent, tv.saying?.state
+```
+
+- **https** (publicly trusted) plays in URL mode.
+- **Plain http** plays through Media Source Extensions, as **fragmented MP4 with AAC**. That is what lets a hub on a laptop or the LAN speak its own text-to-speech with no certificate or cloud storage. A raw MP3 over http is refused with a message rather than the player's opaque `MediaError 3`: Vega's MSE demuxer never starts on raw MP3, though `isTypeSupported('audio/mpeg')` says yes.
+- The player plays first and ends the stream only once the demuxer has it (`loadedmetadata`, `canplay` or `playing`). Ending it earlier fails, and a short clip may not start until the stream is ended.
+- Each line reports `loading`, `playing` (when sound starts), then `ended`, `interrupted` or `error` on `screen.say.status`, so the hub can time it and the phone's echo guard knows when the TV is audible.
+- Encode clips with ffmpeg: `-c:a aac -movflags +frag_keyframe+empty_moov+default_base_moof -f mp4`. [`examples/vega-voice-loop/tts.mjs`](examples/vega-voice-loop/tts.mjs) does it from macOS `say`, Linux `espeak` or any command (`TTS_CMD`).
+
+[`examples/vega-voice-loop`](examples/vega-voice-loop) is the whole loop as a Vega app: the pairing QR, the phone's words as they arrive, the answer, the answer said out loud, and the hub's measurements of each loop, shown on the TV. Measured on the Vega Virtual Device (SDK 0.24) with a scripted phone, 4 utterances:
+
+| Leg (hub clock) | Measured |
+|---|---|
+| speech end → answer on screen | 11–46 ms |
+| `screen.say` → audio playing | 72–175 ms |
+| **speech end → reply audible** | **217–322 ms** |
+| replies played to the end | 4 of 4 |
+
+The scripted phone stamps `speech.end` when it sends the final, so a real phone's recognizer tail comes on top. Text-to-speech (espeak, about 140 ms) runs while the answer is already on screen.
+
+![The voice loop on the Vega Virtual Device: the pairing QR, what was said, the answer, audio playing, and the measured legs](docs/vvd-voice-loop.png)
 
 ## Hub (Node)
 
