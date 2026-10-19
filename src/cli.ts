@@ -11,7 +11,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { networkInterfaces } from 'node:os';
 import { parseArgs } from 'node:util';
-import { BridgeHub } from './hub.js';
+import { BridgeHub, forwardedClient } from './hub.js';
 
 const HELP = `Usage: tv-voice-bridge-hub [options]
 
@@ -22,7 +22,10 @@ const HELP = `Usage: tv-voice-bridge-hub [options]
                       (default http://<this machine's LAN address>:<port>)
   --join-url <tpl>    Full join URL template instead, with {code}, e.g. https://app.example/join/{code}
   --echo              Answer each final transcript: "You said: ..." as an intent and a say line
-  --trust-proxy       Rate-limit by X-Forwarded-For (only behind a reverse proxy you control)
+  --trust-proxy       Rate-limit by the client address a reverse proxy or tunnel appends to X-Forwarded-For.
+                      Read only from a proxy on this machine (loopback) or one named with --proxy
+  --proxy <addr>      Also trust X-Forwarded-For from a proxy at this address (repeatable)
+  --proxy-hops <n>    Proxies in front of the hub, each appending to X-Forwarded-For (default 1)
   --quiet             Do not log joins and leaves
   -h, --help          Show this help
 
@@ -42,6 +45,10 @@ export interface HubCliOptions {
   joinUrl?: string;
   echo: boolean;
   trustProxy: boolean;
+  /** With trustProxy: proxy addresses trusted besides loopback. */
+  proxies?: string[];
+  /** With trustProxy: proxies in front of the hub. Default 1. */
+  proxyHops?: number;
   quiet: boolean;
 }
 
@@ -56,6 +63,8 @@ export function parseHubArgs(argv: string[], env: Record<string, string | undefi
       'join-url': { type: 'string' },
       echo: { type: 'boolean' },
       'trust-proxy': { type: 'boolean' },
+      proxy: { type: 'string', multiple: true },
+      'proxy-hops': { type: 'string' },
       quiet: { type: 'boolean' },
       help: { type: 'boolean', short: 'h' },
     },
@@ -66,6 +75,8 @@ export function parseHubArgs(argv: string[], env: Record<string, string | undefi
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error(`--port must be 0..65535, got ${String(values.port ?? env.PORT)}`);
   const joinUrl = values['join-url'];
   if (joinUrl !== undefined && !joinUrl.includes('{code}')) throw new Error('--join-url must contain {code}');
+  const proxyHops = Number(values['proxy-hops'] ?? 1);
+  if (!Number.isInteger(proxyHops) || proxyHops < 1) throw new Error(`--proxy-hops must be a whole number from 1, got ${String(values['proxy-hops'])}`);
   return {
     port,
     host: values.host ?? '0.0.0.0',
@@ -74,6 +85,8 @@ export function parseHubArgs(argv: string[], env: Record<string, string | undefi
     joinUrl,
     echo: values.echo ?? false,
     trustProxy: values['trust-proxy'] ?? false,
+    proxies: values.proxy ?? [],
+    proxyHops,
     quiet: values.quiet ?? false,
   };
 }
@@ -100,7 +113,7 @@ export async function startHubCli(o: HubCliOptions, log: (line: string) => void 
     server,
     path: o.path,
     joinUrl,
-    rateKey: o.trustProxy ? (req) => String(req.headers['x-forwarded-for'] ?? '').split(',')[0]!.trim() || String(req.socket.remoteAddress) : undefined,
+    rateKey: o.trustProxy ? (req) => forwardedClient(req, { proxies: o.proxies, hops: o.proxyHops }) : undefined,
     onFinal: o.echo
       ? (room, msg) => {
           hub.say(room, { id: `say_${msg.utteranceId}`, text: `You said: ${msg.text}`, priority: 'high' });

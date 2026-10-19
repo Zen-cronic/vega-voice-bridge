@@ -1,6 +1,9 @@
 // `npm run example` (examples/loop) and the hub CLI (src/cli.ts).
+import type { IncomingMessage } from 'node:http';
 import { describe, expect, it } from 'vitest';
+import WebSocket from 'ws';
 import { parseHubArgs, startHubCli } from '../src/cli.js';
+import { forwardedClient } from '../src/hub.js';
 import { BridgeClient, type IntentMsg, type SayPayload } from '../src/index.js';
 // @ts-expect-error plain-JS example without type declarations
 import { runLoop } from '../examples/loop/loop.mjs';
@@ -38,6 +41,47 @@ describe('tv-voice-bridge-hub (CLI)', () => {
     expect(() => parseHubArgs(['--port', 'x'])).toThrow(/--port/);
     expect(() => parseHubArgs(['--join-url', 'https://x/join'])).toThrow(/\{code\}/);
     expect(() => parseHubArgs(['--nope'])).toThrow();
+    expect(parseHubArgs(['--trust-proxy', '--proxy', '10.0.0.2', '--proxy', '10.0.0.3', '--proxy-hops', '2'])).toMatchObject({ trustProxy: true, proxies: ['10.0.0.2', '10.0.0.3'], proxyHops: 2 });
+    expect(() => parseHubArgs(['--proxy-hops', '0'])).toThrow(/--proxy-hops/);
+  });
+
+  it('forwardedClient keys on what the proxy appended, and reads the header only from a trusted proxy', () => {
+    const req = (remoteAddress: string, xff?: string | string[]) => ({ socket: { remoteAddress }, headers: xff === undefined ? {} : { 'x-forwarded-for': xff } }) as unknown as IncomingMessage;
+    // The first entry is whatever the client sent; the proxy appends the real address at the end.
+    expect(forwardedClient(req('127.0.0.1', '6.6.6.6, 203.0.113.7'))).toBe('203.0.113.7');
+    expect(forwardedClient(req('::ffff:127.0.0.1', '203.0.113.7'))).toBe('203.0.113.7');
+    expect(forwardedClient(req('::1', ['6.6.6.6', '203.0.113.7']))).toBe('203.0.113.7');
+    // Not from a proxy: the header is the client's own claim.
+    expect(forwardedClient(req('198.51.100.4', '203.0.113.7'))).toBe('198.51.100.4');
+    expect(forwardedClient(req('10.0.0.2', '6.6.6.6, 203.0.113.7'), { proxies: ['10.0.0.2'] })).toBe('203.0.113.7');
+    // Two proxies, each appending: the client is second from the end.
+    expect(forwardedClient(req('127.0.0.1', '6.6.6.6, 203.0.113.7, 10.0.0.9'), { hops: 2 })).toBe('203.0.113.7');
+    expect(forwardedClient(req('127.0.0.1', '203.0.113.7'), { hops: 2 })).toBe('127.0.0.1');
+    expect(forwardedClient(req('127.0.0.1'))).toBe('127.0.0.1');
+  });
+
+  it('--trust-proxy: a client that varies its own X-Forwarded-For still hits the wrong-code limit', async () => {
+    const app = await startHubCli({ port: 0, host: '127.0.0.1', path: '/ws', echo: false, trustProxy: true, quiet: true }, () => undefined);
+    try {
+      const url = `ws://127.0.0.1:${app.port}/ws`;
+      const outcomes: string[] = [];
+      for (let i = 0; i < 40; i++) {
+        // As a tunnel forwards it: the client's own header, then the address the tunnel saw.
+        const headers = { 'x-forwarded-for': `10.9.${i}.1, 203.0.113.7` };
+        class Proxied extends WebSocket {
+          constructor(u: string) {
+            super(u, { headers });
+          }
+        }
+        const phone = new BridgeClient({ url, role: 'mic', code: 'ZZZZ', reconnect: false, WebSocketImpl: Proxied as never });
+        outcomes.push(await phone.connect().then(() => 'joined', (err: Error) => (/rate-limited|too many/.test(err.message) ? 'rate-limited' : 'unknown-code')));
+        phone.close();
+      }
+      expect(outcomes.filter((o) => o === 'unknown-code')).toHaveLength(30);
+      expect(outcomes.filter((o) => o === 'rate-limited')).toHaveLength(10);
+    } finally {
+      await app.close();
+    }
   });
 
   it('starts a hub, prints the join URL, answers /healthz, and with --echo answers and speaks each final', async () => {

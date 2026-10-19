@@ -101,7 +101,7 @@ export interface HubOptions {
   limits?: Partial<HubLimits>;
   /**
    * Key for the hello and wrong-code limits. Default: the socket's remote address. Behind a tunnel or reverse proxy every
-   * client shares one address, so derive the key from a header you trust instead.
+   * client shares one address, so derive the key from what the proxy appended: `(req) => forwardedClient(req)`.
    */
   rateKey?: (req: IncomingMessage) => string;
   /** Random source for pairing codes (tests). Default: the platform CSPRNG. */
@@ -146,6 +146,36 @@ export function errorText(err: unknown): string {
   } catch {
     return 'unknown error';
   }
+}
+
+export interface ForwardedClientOptions {
+  /** Addresses of proxies whose `X-Forwarded-For` is trusted, besides loopback. */
+  proxies?: string[];
+  /** Proxies in front of the hub, each appending to `X-Forwarded-For`. Default 1. */
+  hops?: number;
+}
+
+const unmapped = (addr: string) => (addr.startsWith('::ffff:') ? addr.slice(7) : addr);
+const isLoopback = (addr: string) => addr === '::1' || unmapped(addr).startsWith('127.');
+
+/**
+ * The client's address behind a reverse proxy or a tunnel, for `rateKey`. Each proxy appends the address it received
+ * the request from, so only the entries at the end are trustworthy; whatever comes before them is what the client
+ * sent. With `hops` proxies the client is the `hops`-th entry from the end. The header counts only when the socket's
+ * peer is loopback (a tunnel agent or a proxy on this machine) or one of `proxies`. Otherwise, or when the header has
+ * fewer entries than `hops`, the socket's own address is the key.
+ */
+export function forwardedClient(req: IncomingMessage, o: ForwardedClientOptions = {}): string {
+  const peer = req.socket?.remoteAddress ?? 'unknown';
+  const trusted = isLoopback(peer) || (o.proxies ?? []).some((p) => unmapped(p) === unmapped(peer));
+  if (!trusted) return peer;
+  const raw = req.headers['x-forwarded-for'];
+  const entries = (Array.isArray(raw) ? raw.join(',') : (raw ?? ''))
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const hops = Math.max(1, Math.floor(o.hops ?? 1));
+  return entries.length >= hops ? entries[entries.length - hops]! : peer;
 }
 
 function rawToString(data: RawData): string {

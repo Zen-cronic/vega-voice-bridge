@@ -250,7 +250,7 @@ The scripted phone stamps `speech.end` when it sends the final, so a real phone'
 
 ```ts
 import http from 'node:http';
-import { BridgeHub } from 'tv-voice-bridge/hub';   // needs `ws`
+import { BridgeHub, forwardedClient } from 'tv-voice-bridge/hub';   // needs `ws`
 
 const server = http.createServer(app);
 const hub = new BridgeHub({
@@ -262,7 +262,7 @@ const hub = new BridgeHub({
     return { name: 'reply', ok: true, payload: { text: msg.text, reply } };   // fanned out as an `intent`
   },
   onApp: (room, msg) => null,               // taps, nav, playback status; return an intent to answer a tracked one
-  rateKey: (req) => String(req.headers['x-forwarded-for'] ?? req.socket.remoteAddress),   // only behind a proxy you trust
+  rateKey: (req) => forwardedClient(req),   // behind a proxy: the address it appended to X-Forwarded-For
 });
 ```
 
@@ -289,7 +289,7 @@ The hub is one Node process. It has one dependency (`ws`) and keeps its rooms in
 
 - **A laptop or a box on the LAN.** Run `npx tv-voice-bridge-hub --port 8790` from an app that has this package installed, or `npm run hub -- --echo` in this repo. It prints the WebSocket URL, plus the join URL built from this machine's LAN address.
 - **A container.** Use `docker build -t tv-voice-bridge-hub .`, then `docker run --rm -p 8790:8790 tv-voice-bridge-hub --public-url http://<lan-ip>:8790`. Arguments after the image name go to the CLI. `GET /healthz` answers `{"ok":true,"rooms":<n>}`.
-- **Behind a reverse proxy or a tunnel.** Pass `--public-url https://your.host` (or a full `--join-url 'https://app.example/join/{code}'`), add `--trust-proxy` so rate limits use `X-Forwarded-For`, and serve `wss://`.
+- **Behind a reverse proxy or a tunnel.** Pass `--public-url https://your.host` (or a full `--join-url 'https://app.example/join/{code}'`), add `--trust-proxy` so rate limits use `X-Forwarded-For`, and serve `wss://`. The hub keys on the last entry, the one the proxy appended, because everything before it is whatever the client sent. It reads the header only from a proxy on the same machine (loopback, as a tunnel agent or a local nginx is). Name a proxy elsewhere with `--proxy <addr>`, and pass `--proxy-hops 2` when two proxies each append (a CDN in front of nginx). `forwardedClient(req, { proxies, hops })` from `tv-voice-bridge/hub` does the same for your own `rateKey`.
 
 The CLI hub serves only the WebSocket and `/healthz`. The join URL must open a page that runs the phone side: your app's page, or [`examples/minimal-phone/phone.html`](examples/minimal-phone/phone.html), which the example servers serve. `--echo` answers each final with "You said: ...", which is enough to try the loop. For your own agent, use `BridgeHub` with `onFinal` (above).
 
