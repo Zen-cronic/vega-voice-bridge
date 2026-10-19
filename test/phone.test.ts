@@ -103,6 +103,21 @@ describe('pairing sugar', () => {
 });
 
 describe('createPhoneMic: transcripts', () => {
+  it('a final heard while the link is down is reported as dropped (not-connected), never as sent', async () => {
+    const m = mic({ echoGuard: false });
+    const finals: string[] = [];
+    const dropped: string[] = [];
+    m.on('final', (f) => finals.push(f.text));
+    m.on('dropped', (d) => dropped.push(`${d.reason}:${d.text}`));
+    phone.close(); // the link drops (a hub restart, a Wi-Fi blip)
+    m.start();
+    const r = ScriptedRecognizer.last;
+    r.hear('add ten pounds');
+    r.final('add ten pounds');
+    r.end();
+    await vi.waitFor(() => expect(dropped).toEqual(['not-connected:add ten pounds']));
+    expect(finals).toEqual([]);
+  });
   it('throttles partials, then sends the final with speech.start and speech.end hops', async () => {
     const log = tvLog();
     const m = mic({ partialEveryMs: 60, echoGuard: false });

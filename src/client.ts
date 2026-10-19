@@ -395,22 +395,26 @@ export class BridgeClient {
    * Mic: send a final transcript. `speechStartAt` and `speechEndAt` are local times (`localNow()`) of when the
    * speech started and ended; they become the `speech.start` and `speech.end` hops in hub clock.
    */
-  sendFinal(text: string, opts: { speechEndAt?: number; speechStartAt?: number; utteranceId?: string } = {}): string {
+  sendFinal(text: string, opts: { speechEndAt?: number; speechStartAt?: number; utteranceId?: string } = {}): string | null {
     const utteranceId = opts.utteranceId ?? newId('utt');
     const hops: Hop[] = [];
     if (opts.speechStartAt !== undefined) hops.push({ hop: 'speech.start', at: opts.speechStartAt + this.offsetMs });
     if (opts.speechEndAt !== undefined) hops.push({ hop: 'speech.end', at: opts.speechEndAt + this.offsetMs });
     hops.push(this.hop('mic.send'));
-    this.send({ type: 'transcript.final', utteranceId, text, hops });
-    return utteranceId;
+    // null: not sent (not connected, or the socket refused it), so the caller can say so instead of "sent"
+    return this.send({ type: 'transcript.final', utteranceId, text, hops }) ? utteranceId : null;
   }
 
-  sendPartial(text: string, utteranceId: string) {
-    this.send({ type: 'transcript.partial', utteranceId, text, hops: [this.hop('mic.partial')] });
+  /** Mic: send a live partial. False when it was not sent. */
+  sendPartial(text: string, utteranceId: string): boolean {
+    return this.send({ type: 'transcript.partial', utteranceId, text, hops: [this.hop('mic.partial')] });
   }
 
-  /** App side channel. With track=true it is stamped and answered like an utterance. */
-  sendApp(topic: string, payload: unknown, opts: { track?: boolean; startedAt?: number } = {}): string | undefined {
+  /**
+   * App side channel. With track=true it is stamped and answered like an utterance, and the result is its id,
+   * or null when it was not sent. Untracked messages return undefined either way (check `connected`).
+   */
+  sendApp(topic: string, payload: unknown, opts: { track?: boolean; startedAt?: number } = {}): string | null | undefined {
     if (!opts.track) {
       this.send({ type: 'app', topic, payload });
       return undefined;
@@ -419,8 +423,7 @@ export class BridgeClient {
     const hops: Hop[] = [];
     if (opts.startedAt !== undefined) hops.push({ hop: 'input.end', at: opts.startedAt + this.offsetMs });
     hops.push(this.hop('mic.send'));
-    this.send({ type: 'app', topic, payload, utteranceId, hops });
-    return utteranceId;
+    return this.send({ type: 'app', topic, payload, utteranceId, hops }) ? utteranceId : null;
   }
 
   /** Screen: confirm an intent reached the screen. Call after the frame that shows it. */

@@ -249,6 +249,21 @@ describe('against a real hub', () => {
     return c;
   };
 
+  it('sendFinal and sendPartial say when nothing was sent (not connected)', async () => {
+    const h = await hubOn(0);
+    cleanups.push(() => h.stop());
+    const url = `ws://127.0.0.1:${h.port}/ws`;
+    const tv = real({ url, role: 'screen' });
+    const { code } = await tv.connect();
+    const phone = real({ url, role: 'mic', code, reconnect: false });
+    expect(phone.sendFinal('too early')).toBeNull();
+    expect(phone.sendPartial('too', 'u0')).toBe(false);
+    expect(phone.sendApp('tap', {}, { track: true })).toBeNull();
+    await phone.connect();
+    expect(phone.sendFinal('now it goes')).toMatch(/^utt/);
+    expect(phone.sendPartial('now', 'u1')).toBe(true);
+  });
+
   it('H6 + H7: after a hub restart the TV re-creates its room and the phone, refused at first, rejoins it', async () => {
     let h = await hubOn(0);
     cleanups.push(() => h.stop());

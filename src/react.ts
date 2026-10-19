@@ -108,7 +108,7 @@ export interface VoiceBridge extends VoiceBridgeState {
   /** Stop the current line and drop the queue (each reported as `interrupted`). */
   stopSay: () => void;
   /** The app side channel (`BridgeClient.sendApp`). */
-  sendApp: (topic: string, payload: unknown, opts?: { track?: boolean; startedAt?: number }) => string | undefined;
+  sendApp: (topic: string, payload: unknown, opts?: { track?: boolean; startedAt?: number }) => string | null | undefined;
   /** Ack an intent yourself (with `autoAck: false`), after the frame that shows it. */
   ack: (intent: IntentMsg, opts?: { stage?: 'rendered' | 'error'; detail?: string }) => void;
 }

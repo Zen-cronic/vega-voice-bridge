@@ -155,8 +155,11 @@ export interface PhoneMicEvents {
   state: (state: PhoneMicState) => void;
   partial: (p: { utteranceId: string; text: string }) => void;
   final: (f: PhoneMicFinal) => void;
-  /** Heard but not sent: `echo` while the TV was talking, `echo-text` a late repeat of its words. */
-  dropped: (d: { text: string; reason: 'echo' | 'echo-text' }) => void;
+  /**
+   * Heard but not sent: `echo` while the TV was talking, `echo-text` a late repeat of its words,
+   * `not-connected` when the link was down (reconnecting), so the page can ask the user to say it again.
+   */
+  dropped: (d: { text: string; reason: 'echo' | 'echo-text' | 'not-connected' }) => void;
   /** The echo guard switched on (the TV started a line) or off. */
   guard: (active: boolean) => void;
   /** The user talked over the TV; `screen.say.stop` was sent. */
@@ -538,7 +541,10 @@ export function createPhoneMic(opts: PhoneMicOptions): PhoneMic {
       const end = Math.min(t, speechEndAt !== null && speechEndAt >= u.startAt ? speechEndAt : u.lastChangeAt);
       const final: PhoneMicFinal = { utteranceId: u.id, text, speechStartAt: Math.min(u.startAt, end), speechEndAt: end };
       speechEndAt = null;
-      client.sendFinal(text, { utteranceId: final.utteranceId, speechStartAt: final.speechStartAt, speechEndAt: final.speechEndAt });
+      if (client.sendFinal(text, { utteranceId: final.utteranceId, speechStartAt: final.speechStartAt, speechEndAt: final.speechEndAt }) === null) {
+        emit('dropped', { text, reason: 'not-connected' });
+        continue;
+      }
       emit('final', final);
     }
   };

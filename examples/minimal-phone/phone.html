@@ -39,8 +39,9 @@
       phone.on('repair', () => ($('status').textContent = 'The TV is gone. Scan the code on the TV again.'));
       $('f').onsubmit = (e) => {
         e.preventDefault();
-        phone.sendFinal($('t').value, { speechEndAt: localNow() });
-        $('t').value = '';
+        // null: not sent (reconnecting), so keep the text for another try
+        if (phone.sendFinal($('t').value, { speechEndAt: localNow() }) === null) $('status').textContent = 'not sent: reconnecting…';
+        else $('t').value = '';
       };
 
       // The echo guard is on by default: while the TV speaks, what this mic hears is not sent.
