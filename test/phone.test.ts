@@ -210,6 +210,61 @@ describe('createPhoneMic: transcripts', () => {
     expect(m.state).toBe('idle');
   });
 
+  describe('continuous mode when the recognizer refuses to start', () => {
+    let refusals = 0;
+    /** A recognizer whose start() throws while `refusals` lasts (as a browser may right after ending a session). */
+    class Refusing extends ScriptedRecognizer {
+      override start() {
+        if (refusals > 0) {
+          refusals--;
+          throw new Error('InvalidStateError');
+        }
+        super.start();
+      }
+    }
+    beforeEach(() => {
+      refusals = 0;
+    });
+    const refusing = (o: Partial<PhoneMicOptions> = {}) => mic({ mode: 'continuous', restartDelayMs: 5, echoGuard: false, recognizer: () => new Refusing(), ...o });
+
+    it('start() says so at once: false, and the mic is in error', () => {
+      refusals = 1;
+      const m = refusing();
+      const errors: PhoneMicError[] = [];
+      m.on('error', (e) => errors.push(e));
+      expect(m.start()).toBe(false);
+      expect(m.state).toBe('error');
+      expect(errors.map((e) => [e.code, e.fatal])).toEqual([['recognizer', true]]);
+    });
+
+    it('a restart that throws is tried again with backoff', async () => {
+      const m = refusing();
+      const errors: PhoneMicError[] = [];
+      m.on('error', (e) => errors.push(e));
+      expect(m.start()).toBe(true);
+      refusals = 1;
+      ScriptedRecognizer.last.end(); // the browser ends the session; the restart throws once
+      await vi.waitFor(() => expect(ScriptedRecognizer.all).toHaveLength(3));
+      expect(ScriptedRecognizer.last.running).toBe(true);
+      expect(m.state).toBe('listening');
+      expect(errors.map((e) => [e.code, e.fatal])).toEqual([['recognizer', false]]);
+    });
+
+    it('restarts that keep throwing stop the mic after a few tries instead of leaving it starting', async () => {
+      const m = refusing();
+      const errors: PhoneMicError[] = [];
+      m.on('error', (e) => errors.push(e));
+      m.start();
+      refusals = 100;
+      ScriptedRecognizer.last.end();
+      await vi.waitFor(() => expect(m.state).toBe('error'), { timeout: 3000 });
+      expect(errors.map((e) => e.fatal)).toEqual([false, false, true]);
+      const made = ScriptedRecognizer.all.length;
+      await settle(200);
+      expect(ScriptedRecognizer.all).toHaveLength(made);
+    });
+  });
+
   it('clear errors: no support, not https, permission denied (fatal); no speech (not fatal)', () => {
     const errors: PhoneMicError[] = [];
     const none = createPhoneMic({ client: phone, recognizer: undefined, secureContext: true });

@@ -357,6 +357,9 @@ interface Utterance {
   done: boolean;
 }
 
+/** Continuous mode: restarts whose start() throws this many times in a row stop the mic. */
+const MAX_START_FAILURES = 3;
+
 const FATAL: Record<string, [PhoneMicErrorCode, string]> = {
   'not-allowed': ['permission-denied', 'Microphone permission was denied. Allow the microphone for this page in the browser settings, then try again.'],
   'service-not-allowed': ['permission-denied', 'Speech recognition is not allowed on this page or device.'],
@@ -409,6 +412,7 @@ export function createPhoneMic(opts: PhoneMicOptions): PhoneMic {
   let pausedByGuard = false;
   let restartTimer: ReturnType<typeof setTimeout> | null = null;
   let restartDelay = opts.restartDelayMs ?? 250;
+  let startFailures = 0; // restarts in a row whose start() threw
   const utterances = new Map<string, Utterance>();
   // Results of the current session already sent or dropped as finals. A recognizer may deliver a final again
   // (a later event whose resultIndex is not past it); it is not a new utterance.
@@ -433,7 +437,7 @@ export function createPhoneMic(opts: PhoneMicOptions): PhoneMic {
               endSession(true);
             } else if (!active && pausedByGuard) {
               pausedByGuard = false;
-              if (want) open();
+              if (want) open(false);
             }
           }
           refreshState();
@@ -462,6 +466,13 @@ export function createPhoneMic(opts: PhoneMicOptions): PhoneMic {
   const clearRestart = () => {
     if (restartTimer) clearTimeout(restartTimer);
     restartTimer = null;
+  };
+
+  const scheduleRestart = () => {
+    restartTimer = setTimeout(() => {
+      restartTimer = null;
+      if (want && !rec) open(false);
+    }, restartDelay);
   };
 
   const clearPartial = (u: Utterance) => {
@@ -590,7 +601,8 @@ export function createPhoneMic(opts: PhoneMicOptions): PhoneMic {
     r.onspeechend = null;
   }
 
-  function open() {
+  /** Start a recognizer session. `byUser`: from `start()`, which reports a failure at once instead of retrying. */
+  function open(byUser: boolean) {
     clearRestart();
     if (!factory) return;
     let r: RecognizerLike;
@@ -610,6 +622,7 @@ export function createPhoneMic(opts: PhoneMicOptions): PhoneMic {
     r.onstart = () => {
       if (mine !== session) return;
       sessionStartedAt = now();
+      startFailures = 0;
       setState(guard?.engaged ? 'guarded' : 'listening');
     };
     r.onspeechstart = () => {
@@ -640,10 +653,7 @@ export function createPhoneMic(opts: PhoneMicOptions): PhoneMic {
         // Browsers end sessions on their own (silence, time limits, iOS Safari after each phrase): start again.
         const lived = now() - sessionStartedAt;
         restartDelay = lived < 1000 ? Math.min(5000, restartDelay * 2) : (opts.restartDelayMs ?? 250);
-        restartTimer = setTimeout(() => {
-          restartTimer = null;
-          if (want && !rec) open();
-        }, restartDelay);
+        scheduleRestart();
         return;
       }
       if (!pausedByGuard) {
@@ -656,7 +666,18 @@ export function createPhoneMic(opts: PhoneMicOptions): PhoneMic {
       r.start();
     } catch (err) {
       rec = null;
-      fail('recognizer', `Speech recognition could not start: ${err instanceof Error ? err.message : String(err)}`, mode !== 'continuous');
+      detach(r);
+      const message = `Speech recognition could not start: ${err instanceof Error ? err.message : String(err)}`;
+      // A restart (no onend will come, since nothing started) tries again with the same backoff as a session
+      // that ended quickly, and gives up after a few in a row. A start the user asked for fails at once.
+      if (!byUser && mode === 'continuous' && want && ++startFailures < MAX_START_FAILURES) {
+        restartDelay = Math.min(5000, restartDelay * 2);
+        scheduleRestart();
+        fail('recognizer', message, false);
+      } else {
+        startFailures = 0;
+        fail('recognizer', message, true);
+      }
     }
   }
 
@@ -695,7 +716,8 @@ export function createPhoneMic(opts: PhoneMicOptions): PhoneMic {
         setState('guarded');
         return true;
       }
-      open();
+      startFailures = 0;
+      open(true);
       return (state as PhoneMicState) !== 'error';
     },
     stop() {
