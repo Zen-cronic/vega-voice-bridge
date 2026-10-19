@@ -134,6 +134,8 @@ export function createVegaSayPlayer(opts: VegaSayPlayerOptions = {}): VegaSayPla
       held = p;
       if (/^https:/i.test(url)) {
         claim();
+        // A srcObject left by an earlier http line would win over src.
+        p.srcObject = null;
         p.src = url;
         await p.play();
         return;

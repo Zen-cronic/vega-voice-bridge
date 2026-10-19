@@ -55,6 +55,14 @@ describe('createVegaSayPlayer', () => {
     expect(media.log).toContain('play https://cdn.example.com/a1.mp3');
     expect(fetched).toBe(0);
   });
+  it('an https line after a plain-http one plays its URL, not the stream the last line left', async () => {
+    const p = createVegaSayPlayer({ fetch: clip() });
+    await run(p, line('http://127.0.0.1:8790/tts/a1.m4a')).done;
+    const r = run(p, line('https://cdn.example.com/a2.mp3'));
+    await r.done;
+    expect(r.seen).toEqual(['playing', 'ended']);
+    expect(media.log.filter((e) => e.startsWith('play'))).toEqual(['play mse', 'play https://cdn.example.com/a2.mp3']);
+  });
   it('resolves a hub-relative URL against baseUrl, and says so when there is none', async () => {
     const urls: string[] = [];
     const p = createVegaSayPlayer({ baseUrl: 'http://127.0.0.1:8790/', fetch: async (u) => (urls.push(u), clip()()) });

@@ -76,7 +76,8 @@ export class AudioPlayer extends Events {
     media.log.push('deinitialize');
   }
   async play() {
-    media.log.push(this.src ? `play ${this.src}` : 'play mse');
+    // As in the W3C media model, a srcObject wins over src.
+    media.log.push(this.obj ? 'play mse' : this.src ? `play ${this.src}` : 'play (no source)');
     void (async () => {
       for (const e of media.script) {
         await tick();
