@@ -6,14 +6,40 @@
 phone speech  →  your app or agent  →  TV renders  →  TV speaks (screen.say)  →  playback confirmed
 ```
 
-`tv-voice-bridge` has three parts:
-- a small WebSocket protocol ([PROTOCOL.md](PROTOCOL.md));
-- a Node hub;
-- a framework-agnostic client for React Native for Vega, web TVs and Node.
+The phone's own recognizer turns speech into text. Your `onFinal` handler, whether rules, an LLM or an MCP client, decides what it means and what the TV should say. The bridge carries the text both ways, confirms that the TV rendered and played the result, and keeps the TV's own voice from coming back through the phone's microphone. Pairing is the smallest part: the TV shows a 4-character code (and a QR code), and the phone joins with it.
 
-The phone's own recognizer turns speech into text. Your `onFinal` handler, whether rules, an LLM or an MCP client, decides what it means and what the TV should say. The bridge carries the text both ways and confirms that the TV rendered and played the result. Pairing is the smallest part: the TV shows a 4-character code, and the phone joins with it.
+What is in the package:
 
-> MIT licensed. Package name and scope (`@rackboard/…`) are placeholders, and the package is marked `"private": true` until it is published. Current version: **0.2.0** (protocol v1; see [CHANGELOG.md](CHANGELOG.md)).
+| Import | What it is |
+|---|---|
+| `@rackboard/tv-voice-bridge` | The framework-agnostic client for both roles (React Native for Vega, web TVs, Node), plus the protocol types |
+| `…/phone` | The voice half for a phone browser page: Web Speech in, transcripts out, with the [echo guard](#the-echo-guard) and barge-in |
+| `…/react` | `useVoiceBridge()` and `<PairingQr>` for the TV, with no native dependencies |
+| `…/hub` | The Node hub, and the `tv-voice-bridge-hub` CLI |
+| `…/qr` | A dependency-free QR Code encoder for the pairing screen |
+| [PROTOCOL.md](PROTOCOL.md) | The wire protocol (v1), for a second implementation on another platform |
+
+> MIT licensed. Package name and scope (`@rackboard/…`) are placeholders, and the package is marked `"private": true` until it is published. Current version: **0.3.0** (protocol v1, revision 3; see [CHANGELOG.md](CHANGELOG.md)).
+
+## The whole loop in one command
+
+```bash
+npm install && npm run example
+```
+
+[`examples/loop/loop.mjs`](examples/loop/loop.mjs) runs a hub, a TV and a phone in one process. The phone's recognizer is scripted and the TV has no speaker; everything else is the library's own code. For each utterance it prints the hop timeline. While the TV "talks", the phone also hears the reply, as a phone in the same room would, and the echo guard drops it. The output looks like this (in-process, this machine, so the network legs are near zero):
+
+```
+"what should I do next"  ->  TV says "Next up: three sets of squats."
+  mic.send -> hub.recv              0 ms
+  hub.recv -> hub.intent            0 ms
+  hub.intent -> screen.recv         0 ms
+  screen.recv -> screen.render      0 ms
+  speech.end -> screen.render       2 ms   (heard -> on screen)
+  say -> playing                    1 ms   (reply dispatched -> TV reports sound)
+...
+echo guard: 3 of 3 replies heard by the phone were dropped; the TV received 3 transcripts, all from the user
+```
 
 ## The round trip
 
@@ -32,7 +58,9 @@ sequenceDiagram
   T->>H: ack  [screen.recv, screen.render]
   H->>P: ack  [hub.ack]  → speech.end → screen.render in ms
   H->>T: app screen.say {text, audioUrl, priority}
+  H->>P: app screen.speech {queued}  (the echo guard starts)
   T->>H: app screen.say.status {loading → playing → ended}
+  H->>P: app screen.speech {playing → ended}  (the guard ends after a short tail)
 ```
 
 ### Per-hop latency model
@@ -49,7 +77,7 @@ Every utterance carries `hops: [{hop, at}]` in **hub clock**. Each client estima
 | `screen.render → hub.ack` | TV to hub (the confirmation, not user-visible) |
 | `screen.say` sent → `screen.say.status: playing` | The TV loading and starting the reply's audio (`at` is hub clock) |
 
-`latency(ack.hops).span('speech.end', 'screen.render')` gives the user-visible number, and `.legs` gives each leg. Taps use `input.end` instead of `speech.end`. The table below was measured in the first app built on the bridge. The Vega rows come from the **Vega Virtual Device** (SDK 0.24), not a physical stick.
+`latency(ack.hops).span('speech.end', 'screen.render')` gives the user-visible number, and `.legs` gives each leg. Taps use `input.end` instead of `speech.end`. `./phone` also stamps `speech.start`, so `speech.start → speech.end` is how long the user spoke. The table below was measured in the first app built on the bridge. The Vega rows come from the **Vega Virtual Device** (SDK 0.24), not a physical stick.
 
 | Path | Measured |
 |---|---|
@@ -102,7 +130,7 @@ Until then, pack it and install the tarball:
 
 ```bash
 npm pack --pack-destination ../my-app/vendor     # in this repo; builds first
-cd ../my-app && npm install ./vendor/rackboard-tv-voice-bridge-0.2.0.tgz
+cd ../my-app && npm install ./vendor/rackboard-tv-voice-bridge-0.3.0.tgz
 ```
 
 For a live link while you edit the bridge (changes show up without re-packing), use `npm link`:
@@ -112,7 +140,7 @@ npm run build && npm link                         # in this repo
 cd ../my-app && npm link @rackboard/tv-voice-bridge
 ```
 
-A linked package is a symlink outside the app's folder, so React Native for Vega's Metro bundler may not follow it without extra `watchFolders` config. Prefer the tarball for Vega builds and for anything a fresh clone must install. The hub needs `ws` (an optional peer dependency); the client needs nothing.
+A linked package is a symlink outside the app's folder, so React Native for Vega's Metro bundler may not follow it without extra `watchFolders` config. Prefer the tarball for Vega builds and for anything a fresh clone must install. The hub needs `ws` (an optional peer dependency); the client needs nothing. `./react` needs `react` (18 or later) and a `react-native` that your bundler resolves (React Native for Vega, or react-native-web); both are optional peer dependencies that only `./react` imports.
 
 ## Quick start: an agent on a web TV (2 minutes)
 
@@ -130,6 +158,38 @@ startAgent({ respond, timeoutMs: 8000, fallback: "Sorry, I didn't catch that." }
 ```
 
 `respond` is time-boxed and may throw; the TV always answers. The default responder is offline and deterministic, and `test/agent.test.ts` walks the whole round trip with a stub. [`examples/minimal-web-tv/server.mjs`](examples/minimal-web-tv/server.mjs) is the plain echo version. Browser speech recognition on the phone needs a secure context: `localhost`, or https on the LAN (for example a local CA such as mkcert, trusted on the phone once). The typed input works over plain http.
+
+## Quick start: a TV screen with the React hook
+
+`./react` wraps the client for a React or React Native TV. It runs on React Native for Vega and react-native-web, and draws the QR code with plain `View`s.
+
+```tsx
+import { PairingQr, useVoiceBridge } from '@rackboard/tv-voice-bridge/react';
+
+export function Screen() {
+  const tv = useVoiceBridge({
+    url: 'ws://192.168.1.20:8790/ws',
+    player: (line, ctl) => {                          // play line.audioUrl, or a local TTS of line.text
+      const stop = myPlayer.play(line, { onStart: ctl.playing, onEnd: ctl.ended, onError: ctl.error });
+      return stop;                                    // called when a high-priority line or a barge-in interrupts
+    },
+    onIntent: (m) => applyToMyState(m.payload),        // the ack is sent after the frame that shows it
+  });
+  if (tv.status !== 'paired') return <PairingQr value={tv.joinUrl ?? ''} size={320} />;   // plus tv.code as text
+  return <Answer heard={tv.final?.text} live={tv.partial} saying={tv.saying?.line.text} />;
+}
+```
+
+- **What the hook returns:**
+  - `status`: `connecting`, `waiting-for-phone`, `paired`, `reconnecting` or `closed`;
+  - `code`, `joinUrl`, `peers` and `mics`;
+  - the live `partial`, and the latest `final` and `intent`;
+  - `saying`, the line being said and its state;
+  - `say(text)`, `stopSay()`, `sendApp()` and `ack()`, plus `client` for anything else.
+- **Acks follow the paint.** The hook acks each intent in a task queued from the next animation frame after React commits it. So the `screen.render` hop is a moment when the viewer could see the result. Pass `autoAck: false` to ack yourself.
+- **Say lines play one at a time** through your `player`. Lines come from the hub, or from the TV's own `say(text)`. `high` priority interrupts the current line, and so does a phone's barge-in (`interruptible`, default true). Every state is reported on `screen.say.status`, with the line's text, which is what keeps the phone's echo guard in step. With no player, lines are captions only and are reported as `no-audio`.
+- **Callbacks and the player are read from the latest render,** so inline functions are fine. The connection is rebuilt only when `url`, `code`, `name`, `clientId`, `resumeToken`, `sayTopic` or `enabled` change. Unmounting closes it.
+- **`<PairingQr value size? ecc? quietZone? dark? light? testID? />`** draws one `View` per horizontal run of dark modules over a light square. The square includes the 4-module quiet zone and uses whole-number cells. Its default `testID` is `pairing-qr`.
 
 ## Quick start: React Native for Vega
 
@@ -151,6 +211,10 @@ tv.connect().catch(() => undefined);                                       // ke
 - **Audio must be public https.** The W3C media player (`@amazon-devices/react-native-w3cmedia`) **plays only publicly trusted https URLs**. It refuses `http://` and a local CA, and raw-mp3 MSE never initialized for us. For `screen.say` audio, upload the clip and send a presigned https URL (we use S3 with a 1 h expiry), or fall back to captions and report `no-audio`.
 - **Metro, only when bundling from source.** The package source uses TS-ESM imports (`./protocol.js`), so map them to `.ts` in a custom `resolveRequest`. A custom resolver replaces Vega's own, so also re-apply the `react-native` → `@amazon-devices/react-native-kepler` mapping. Without that mapping the bundle ships core React Native and the app aborts at launch. See [`examples/minimal-vega/metro.config.js`](examples/minimal-vega/metro.config.js).
 - **`performance.timeOrigin`.** It may be missing on some runtimes. The client falls back on its own; polyfill it as `Date.now() - performance.now()` if your code stamps `receivedAt` itself.
+
+## The TV speaks back on Vega
+
+See examples/vega-voice-loop.
 
 ## Hub (Node)
 
@@ -199,18 +263,62 @@ The hub is one Node process. It has one dependency (`ws`) and keeps its rooms in
 
 The CLI hub serves only the WebSocket and `/healthz`. The join URL must open a page that runs the phone side: your app's page, or [`examples/minimal-phone/phone.html`](examples/minimal-phone/phone.html), which the example servers serve. `--echo` answers each final with "You said: ...", which is enough to try the loop. For your own agent, use `BridgeHub` with `onFinal` (above).
 
-## Mic (phone)
+## Phone (`./phone`)
+
+The phone is a web page; nothing is installed on it. [`examples/minimal-phone/phone.html`](examples/minimal-phone/phone.html) is a complete one, with hold-to-talk, hands-free, a stop button and typed input.
 
 ```ts
-import { BridgeClient, latency } from '@rackboard/tv-voice-bridge';
-const phone = new BridgeClient({ url: `wss://${location.host}/ws`, role: 'mic', code });
+import { latency } from '@rackboard/tv-voice-bridge';
+import { connectPhone, createPhoneMic } from '@rackboard/tv-voice-bridge/phone';
+
+const phone = connectPhone();                       // hub URL and code from this page's address (/p/K7QF)
 phone.on('ack', (a) => show(latency(a.hops).span('speech.end', 'screen.render')));   // ms, across three devices
-phone.on('repair', () => askToScanAgain());   // the TV's room is gone for good
-await phone.connect();
-recognition.onresult = (e) => { /* sendPartial(text, id) while speaking, sendFinal(text, { speechEndAt, utteranceId: id }) at the end */ };
+phone.on('repair', () => askToScanAgain());         // the TV's room is gone for good
+
+const mic = createPhoneMic({ client: phone, mode: 'push-to-talk', echoGuard: { bargeIn: true } });
+button.onpointerdown = () => mic.start();
+button.onpointerup = () => mic.stop();              // the final result still arrives
+mic.on('error', (e) => show(e.message));            // e.code: no-support, insecure-context, permission-denied, ...
 ```
 
-**Staying connected.** With `reconnect` on (the default), the client keeps the link up until `close()`:
+- **Recognizer.** It uses Web Speech (`SpeechRecognition`, or Safari's `webkitSpeechRecognition`). Pass `recognizer` to use something else with the same shape, as the tests do.
+- **Transcripts.** Interim results become `transcript.partial`s, at most one per `partialEveryMs` (150 ms) and always ending on the latest text. Finals become `transcript.final`s with `speech.start` and `speech.end` hops. `speech.end` is the recognizer's `speechend` event when it fired for this utterance; otherwise it is the last time the interim text changed. That is the closest a browser recognizer gets to "the user stopped talking".
+- **Modes.** `push-to-talk` is `start()` on press and `stop()` on release. `continuous` listens until `stop()`, and restarts each session the browser ends; iOS Safari ends them often. The restart delay backs off while sessions keep ending quickly.
+- **Errors.** Each error has a code and a plain message. `no-support`, `insecure-context` (speech recognition needs https or `localhost`), `permission-denied` and `no-microphone` are fatal. `no-speech` and `network` are not. Typed input over plain http still works.
+- **Without `./phone`,** drive `BridgeClient` yourself: `new BridgeClient({ url, role: 'mic', code })`, `sendPartial(text, id)` while speaking, and `sendFinal(text, { speechEndAt: localNow(), utteranceId: id })` at the end.
+
+## The echo guard
+
+The phone's microphone and the TV's speaker are in the same room. A phone that keeps listening hears the TV's reply, and without a guard it would send the TV's words back as the user's next utterance. Then the agent answers itself.
+
+The hub tells each phone what the TV is saying, on `screen.speech`. It sends `queued` when your app sends a say line, then relays each playback report the TV sends (`loading`, `playing`, `ended`, `interrupted`, `error`, `no-audio`). The notices never carry the audio URL. `createPhoneMic` uses them like this:
+
+- **Drop while the TV is audible.** From `queued` until `ended`, `interrupted` or `error`, plus a short tail (`tailMs`, 700 ms), whatever the mic hears is dropped, and it reports `dropped` with reason `echo`. `mode: 'pause'` aborts the recognizer instead and restarts it after the line, in continuous mode. A `no-audio` (captions only) line releases at once.
+- **Never stuck.** A screen that never reports holds the guard only for the line's `durationMs` plus slack. Every hold is capped at `maxHoldMs` (20 s).
+- **Late echoes.** A final that repeats the TV's last words a few seconds after a line is dropped too (reason `echo-text`). It needs at least three words that are mostly the line's, or the whole line, so a short "yes" gets through.
+- **Barge-in** (`bargeIn: true`). The user talks over the TV: speech during a line that has at least two words and is mostly not the line's own words. The phone then sends `screen.say.stop`, and the TV stops and drops its queue. What the user said is kept. In push-to-talk, pressing the button while the TV talks is itself a barge-in, and `mic.interrupt()` is a stop button. Automatic barge-in needs the line's text, so it is off for lines a screen reports without `text`.
+
+The TV side honours `screen.say.stop` in `useVoiceBridge` (default) and in the example web TV, and both report every line they drop. Mixed versions work. A 0.2 hub sends no notices, so a 0.3 phone's guard never engages. A 0.2 screen ignores stops, but its playback reports still drive the guard. The wire details are in [PROTOCOL.md](PROTOCOL.md#101-the-echo-guard-screenspeech-and-screensaystop-revision-3).
+
+## Pairing QR (`./qr`)
+
+The pairing screen shows the join URL as a QR code. `./qr` encodes it with no dependencies, so a TV app does not need a native QR module or an SVG renderer.
+
+```ts
+import { qrMatrix, qrRuns, qrSvg, qrSvgPath } from '@rackboard/tv-voice-bridge/qr';
+
+const m = qrMatrix(joinUrl);                  // { size, version, ecc: 'M', mask, modules: boolean[][] }, no quiet zone
+const d = qrSvgPath(m, { cell: 8, margin: 4 });   // one SVG path, dark modules merged into horizontal runs
+const svg = qrSvg(m);                         // a whole <svg> document with a 4-module quiet zone
+const runs = qrRuns(m);                       // [{x, y, w}], for any other renderer (PairingQr uses these)
+```
+
+- **What it encodes:** byte mode (UTF-8; `eci: true` adds an ECI 26 header), error correction `L`, `M` (default), `Q` or `H`, and versions 1 to 40. It picks the smallest version that fits, and the mask with the lowest penalty under the four rules of ISO/IEC 18004. It was written from the standard.
+- **How it is tested:** `test/qr.test.ts` rasterizes symbols and reads them back with an independent decoder (a devDependency). Every version at every level is filled to its last byte and decoded, except version 23 at level L. There the decoder's own alignment table differs from the spec's, so that pair is checked structurally instead. The test also covers each mask, UTF-8 with and without ECI, and each copy of the format and version information on its own.
+
+## Staying connected
+
+With `reconnect` on (the default), the client keeps the link up until `close()`:
 
 - **Backoff:** capped exponential, 250 ms doubling to 10 s, with half of each delay random.
 - **Dead links:** the heartbeat pings every 10 s and drops the link after 25 s of silence.
@@ -221,7 +329,7 @@ To keep a `clientId` across page reloads, persist **both** `client.clientId` and
 
 ## Protocol
 
-[PROTOCOL.md](PROTOCOL.md) is the spec. It covers framing, every message with field limits, who may send what, routing, pairing and room lifetime, identity, liveness, errors, hub-clock hops, `screen.say`, backpressure, and the versioning rules. Version `1` has two revisions, which interoperate both ways. In short:
+[PROTOCOL.md](PROTOCOL.md) is the spec. It covers framing, every message with field limits, who may send what, routing, pairing and room lifetime, identity, liveness, errors, hub-clock hops, `screen.say`, the echo guard relays, backpressure, and the versioning rules. Version `1` has three revisions, which interoperate both ways. In short:
 
 | `type` | Direction | Notes |
 |---|---|---|
@@ -230,6 +338,8 @@ To keep a `clientId` across page reloads, persist **both** `client.clientId` and
 | `intent` | hub → **room** | What your app or agent understood |
 | `ack` | screen → hub → **mics** | Sent after the frame that shows the intent |
 | `app` | any → hub | Side channel. `screen.say` (hub → screens) and `screen.say.status` (screen → hub) ride on it |
+| `app` `screen.speech` | hub → **mics** | What the TV is saying, for the echo guard. Never carries the audio URL |
+| `app` `screen.say.stop` | mic → hub → **screens** | Stop talking (barge-in, or a stop button) |
 | `ping` / `pong` | client ↔ hub | Clock sync and liveness |
 | `error` | hub → client | `unknown-code`, `bad-message`, `version`, `handler-failed`, `rate-limited`, `id-in-use`, `full`, `not-allowed` |
 
@@ -240,7 +350,7 @@ To keep a `clientId` across page reloads, persist **both** `client.clientId` and
 - **Rooms do not outlive the TV.** A mic can join only a room whose screen is present, or left less than `roomGraceMs` ago. Rooms live in memory and disappear when the hub restarts; the TV re-creates its code on reconnect.
 - **Behind a tunnel or reverse proxy, set `rateKey`.** There, every client shares one remote address. Serve **https/wss** beyond the LAN, rotate codes per session, and consider an on-screen confirm.
 - **`clientId` is not a secret.** It is shown to the room. A live `clientId` can be taken over only with its `resumeToken`, or once the holder stops answering pings.
-- **`screen.say` audio URLs are bearer links.** Use short-lived presigned URLs, not public buckets, and never log the query string.
+- **`screen.say` audio URLs are bearer links.** Use short-lived presigned URLs, not public buckets, and never log the query string. The hub's `screen.speech` notices to phones never include them.
 - **The hub runs no LLM and stores nothing.** What `onFinal` does with transcripts is your app's privacy surface.
 
 ## Known limits
@@ -250,20 +360,28 @@ To keep a `clientId` across page reloads, persist **both** `client.clientId` and
 - **No end-to-end encryption.** Transport security is TLS between each device and the hub.
 - **One hub process holds all rooms in memory.** There is no clustering.
 - **The Vega example is illustrative,** and it is not type-checked in this repo.
+- **The echo guard is a heuristic.** It trusts the TV's playback reports, and it holds for a capped time when there are none. Barge-in and late-echo detection compare words with the TV's line, so a recognizer that badly mishears the TV can fool them. Room acoustics are not modelled.
+- **`./phone` relies on the browser's recognizer.** Web Speech is in Chrome and Safari, needs a secure context, and its timing events vary by engine, so `speech.end` is an estimate (see [Phone](#phone-phone)).
+- **`./react` is tested with a host-component mock of `react-native`,** under React 18 and react-test-renderer. It has not been run on a device in this repo.
+- **The Dockerfile's steps were rehearsed outside a container** (install, build, pack, install the tarball, start the CLI). The image itself has not been built in this repo.
 
 ## Tests
 
-`npm test` runs 92 tests in 6 files:
+`npm test` runs 192 tests in 10 files:
 
-- **Protocol conformance** (`test/conformance.test.ts`, 36), the reference for second implementations:
+- **Protocol conformance** (`test/conformance.test.ts`, 45), the reference for second implementations:
   - wire vectors for every message type;
   - field-level validation;
   - the hub as a black box over raw sockets: refusals, version, pairing, code normalization, `id-in-use`, 0.1 compatibility, role rules, handler failure;
-  - routing, hop order, and `screen.say`.
+  - routing, hop order, and `screen.say`;
+  - the echo guard relays: `screen.speech` to mics (never the audio URL), `screen.say.stop` to screens, and payload validation.
 - **Hub robustness** (`test/robustness.test.ts`, 23): every input that crashed the 0.1.0 hub (non-string `code`, invalid UTF-8, a reserved opcode, an oversized frame, a bad upgrade target, throwing callbacks). It also covers room lifetime, collision-free codes, brute-force and rate limits, capacity, dead-holder takeover, heartbeat and backpressure.
 - **Client resilience** (`test/client.test.ts`, 17): backoff, split-frame reassembly, dead links without `onclose`, connect timeout, timer hygiene, clock-offset reset, and real hub restarts (re-join and re-pair).
 - **Client and hub behaviour** (`test/bridge.test.ts`, 10): pairing, resume, end-to-end hops, partials, taps, two mics.
-- **Examples** (`test/example.test.ts`, 3; `test/agent.test.ts`, 3): the web TV server, and the agent round trip with a stubbed `respond`.
+- **Phone** (`test/phone.test.ts`, 19), with a scripted recognizer and a real hub: pairing from the page address, throttled partials, `speech.start` / `speech.end`, continuous restarts, typed errors, the echo guard, late echoes, pause mode, barge-in, and the guard's clock.
+- **React** (`test/react.test.ts`, 15), with react-test-renderer and a real hub: status transitions, ack-after-render hops, the say queue and its reports, interrupts, callback refs, cleanup, barge-in through `./phone`, and PairingQr's views reproducing and decoding to the matrix.
+- **QR** (`test/qr.test.ts`, 53): decode round trips (see [Pairing QR](#pairing-qr-qr)).
+- **Examples** (`test/example.test.ts`, 3; `test/agent.test.ts`, 3; `test/loop.test.ts`, 4): the web TV server, the agent round trip with a stubbed `respond`, `npm run example`, and the hub CLI.
 
 ## Development
 
@@ -272,7 +390,9 @@ Requires Node 20 or later (developed on Node 24).
 ```bash
 npm install              # dev dependencies only; also builds dist/ (prepare)
 npm run typecheck        # tsc --noEmit over src/ and test/
-npm test                 # vitest: 92 tests, no build needed (tests import src/)
+npm test                 # vitest: 192 tests, no build needed (tests import src/)
+npm run example          # the whole loop in one process, with the hop timeline
+npm run hub -- --echo    # a standalone hub (the tv-voice-bridge-hub bin)
 npm run build            # cleans, then tsc -> dist/ (ESM + .d.ts + source maps)
 npm pack --dry-run       # dist/, src/, README.md, PROTOCOL.md, CHANGELOG.md, LICENSE (no tests or examples)
 ```

@@ -28,6 +28,7 @@ The wire protocol is still **v1**. Everything below is additive.
 
 ### Changed
 - Mics now receive `app` frames from the hub (`screen.speech`). Mic code that handles every `app` message without checking `topic` will see them.
+- README: it leads with the loop and `npm run example`, and adds sections for `./react`, `./phone`, the echo guard and `./qr`, a table of what is in the package, and new known limits.
 - In the conformance suite, "hub.say reaches no mic" now means no `screen.say` frame reaches a mic. Mics get a `screen.speech` notice instead.
 
 ## 0.2.0 (2026-10-18)
