@@ -143,6 +143,16 @@ describe('createVegaSayPlayer', () => {
     expect(media.log.filter((e) => e.startsWith('append'))).toHaveLength(1);
   });
 
+  it('a failed player start is not kept: the next line tries again', async () => {
+    media.failInit = 1;
+    const p = createVegaSayPlayer({ fetch: clip() });
+    await p.warm(); // the transient failure happens here, at start-up
+    const r = run(p, line('http://127.0.0.1:8790/tts/a1.m4a'));
+    await r.done;
+    expect(r.seen).toEqual(['playing', 'ended']);
+    expect(media.log.filter((e) => e === 'initialize')).toHaveLength(2);
+  });
+
   it('a media error reaches the line, and one player serves every line', async () => {
     media.script = ['error'];
     const p = createVegaSayPlayer({ fetch: clip() });

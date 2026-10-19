@@ -59,8 +59,9 @@ export function createVegaSayPlayer(opts: VegaSayPlayerOptions = {}): VegaSayPla
     return o;
   };
 
-  const player = () =>
-    (ready ??= (async () => {
+  const player = () => {
+    if (ready) return ready;
+    const attempt = (async () => {
       try {
         const p = new AudioPlayer();
         await p.initialize();
@@ -75,7 +76,14 @@ export function createVegaSayPlayer(opts: VegaSayPlayerOptions = {}): VegaSayPla
       } catch {
         return null;
       }
-    })());
+    })();
+    ready = attempt;
+    // A failed start is not kept: the next line (or warm()) tries again.
+    void attempt.then((p) => {
+      if (!p && ready === attempt) ready = null;
+    });
+    return attempt;
+  };
 
   // Feed one fragmented MP4 clip through MSE. Ending the stream before the demuxer has the stream fails
   // (DEMUXER_INVALID_STATE), and a short clip may not start until the stream is ended, so: append, play,

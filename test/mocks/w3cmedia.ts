@@ -23,11 +23,14 @@ export const media = {
   script: ['canplay', 'playing', 'ended'] as string[],
   /** Called whenever a player's srcObject is set (a test can stop a line right there). */
   onSrcObject: null as ((v: unknown) => void) | null,
+  /** The next this many initialize() calls fail. */
+  failInit: 0,
   reset() {
     this.log = [];
     this.players = [];
     this.script = ['canplay', 'playing', 'ended'];
     this.onSrcObject = null;
+    this.failInit = 0;
   },
 };
 
@@ -71,6 +74,10 @@ export class AudioPlayer extends Events {
   }
   async initialize() {
     media.log.push('initialize');
+    if (media.failInit > 0) {
+      media.failInit--;
+      throw new Error('initialize failed');
+    }
   }
   async deinitialize() {
     media.log.push('deinitialize');
