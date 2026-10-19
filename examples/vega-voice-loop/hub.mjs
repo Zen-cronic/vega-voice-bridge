@@ -1,19 +1,21 @@
-// The voice loop on one port: the bridge hub, a stub agent, local text-to-speech, and the loop measured in hub
-// clock (printed, and shown on the TV).
+// The voice loop on one port: the bridge hub, a stub agent, local text-to-speech, the phone page, and the loop
+// measured in hub clock (printed, and shown on the TV).
 //   node examples/vega-voice-loop/hub.mjs [--port 8790] [--public-url http://192.168.1.20:8790]
 // The Vega app reaches it at 127.0.0.1:<port> on the Virtual Device (after a reverse port forward) or at the
 // LAN address on a Fire TV Stick. Replies are fragmented MP4/AAC clips served from this hub over plain http.
+// The pairing QR opens the phone page on this hub, at this machine's LAN address unless --public-url says otherwise.
 import { createServer } from 'node:http';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BridgeHub } from 'tv-voice-bridge/hub';
 import { latency } from 'tv-voice-bridge';
+import { lanAddress, servePhonePage } from '../../dist/cli.js';
 import { createTts } from './tts.mjs';
 
 const arg = (name) => (process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : undefined);
 const port = Number(arg('--port')) || 8790;
-const publicUrl = (arg('--public-url') ?? `http://127.0.0.1:${port}`).replace(/\/+$/, '');
+const publicUrl = (arg('--public-url') ?? `http://${lanAddress()}:${port}`).replace(/\/+$/, '');
 const dir = join(fileURLToPath(new URL('.', import.meta.url)), '.tts');
 const tts = createTts({ dir });
 
@@ -27,6 +29,7 @@ const respond = (text) => {
 
 const loops = new Map(); // say id -> what the hub saw, in hub clock
 const server = createServer((req, res) => {
+  if (servePhonePage(req, res)) return; // /p/<code> and /lib/
   const m = /^\/tts\/([0-9a-f]{16})\.(m4a|mp3)$/.exec(req.url ?? '');
   const file = m && join(dir, `${m[1]}.${m[2]}`);
   if (!file || !existsSync(file)) return void res.writeHead(404).end();

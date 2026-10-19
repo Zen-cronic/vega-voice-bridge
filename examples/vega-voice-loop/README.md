@@ -25,11 +25,13 @@ vega virtual-device start
 vega device start-port-forwarding -d VirtualDevice --port 8790 --forward false   # the VVD reaches the hub at 127.0.0.1
 vega run-app build/x86_64-release/voiceloop_x86_64.vpkg com.tvvoicebridge.loop.main -d VirtualDevice
 
-# 4. a phone: the scripted one (the TV shows the code), or a real phone browser on examples/minimal-phone
+# 4. a phone: the scripted one (the TV shows the code), or a real phone on the same Wi-Fi scanning the TV's QR
 node examples/vega-voice-loop/phone.mjs <CODE>
 ```
 
-On a Fire TV Stick, start the hub with `--public-url http://<your LAN IP>:8790`, set `npm run hub -- <LAN IP>:8790` before building, and install the `armv7` or `aarch64` package.
+The QR opens the phone page this hub serves, at this machine's LAN address (`--public-url` overrides it). Browsers allow the microphone only on https or localhost, so over plain http the page offers typing; for voice, put the hub behind an https tunnel and pass its URL as `--public-url`.
+
+On a Fire TV Stick, set `npm run hub -- <LAN IP>:8790` before building, and install the `armv7` or `aarch64` package.
 
 ## What to change
 

@@ -58,6 +58,7 @@
   "files": [
     "dist",
     "src",
+    "examples/minimal-phone/phone.html",
     "README.md",
     "PROTOCOL.md",
     "CHANGELOG.md",

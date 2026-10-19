@@ -1,4 +1,5 @@
 // `npm run example` (examples/loop) and the hub CLI (src/cli.ts).
+import { existsSync } from 'node:fs';
 import type { IncomingMessage } from 'node:http';
 import { describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
@@ -107,6 +108,37 @@ describe('tv-voice-bridge-hub (CLI)', () => {
       phone.close();
     } finally {
       await app.close();
+    }
+  });
+
+  it('the join URL it prints opens a phone page, with its modules under /lib/ and nothing else', async () => {
+    const app = await startHubCli({ port: 0, host: '127.0.0.1', path: '/ws', echo: false, trustProxy: false, quiet: true }, () => undefined);
+    try {
+      const base = `http://127.0.0.1:${app.port}`;
+      const tv = new BridgeClient({ url: `ws://127.0.0.1:${app.port}/ws`, role: 'screen', reconnect: false });
+      const { joinUrl } = await tv.connect();
+      tv.close();
+      const page = await fetch(joinUrl!);
+      expect(page.status).toBe(200);
+      expect(page.headers.get('content-type')).toMatch(/text\/html/);
+      expect(await page.text()).toContain('phone mic');
+      for (const escape of ['/lib/..%2Fpackage.json', '/lib/%2e%2e/src/hub.ts', '/lib/..%2F..%2Fpackage.json', '/lib/', '/lib/index.d.ts'])
+        expect((await fetch(`${base}${escape}`)).status).toBe(404);
+      expect((await fetch(`${base}/elsewhere`)).status).toBe(404);
+      // The modules are the package's build (absent in a fresh clone until `npm run build`).
+      if (existsSync(new URL('../dist/phone.js', import.meta.url))) {
+        const lib = await fetch(`${base}/lib/phone.js`);
+        expect(lib.status).toBe(200);
+        expect(lib.headers.get('content-type')).toMatch(/javascript/);
+      }
+    } finally {
+      await app.close();
+    }
+    const off = await startHubCli({ ...(parseHubArgs(['--port', '0', '--host', '127.0.0.1', '--no-phone', '--quiet']) as Exclude<ReturnType<typeof parseHubArgs>, 'help'>) }, () => undefined);
+    try {
+      expect((await fetch(`http://127.0.0.1:${off.port}/p/ABCD`)).status).toBe(404);
+    } finally {
+      await off.close();
     }
   });
 

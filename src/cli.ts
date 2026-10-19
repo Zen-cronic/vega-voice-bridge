@@ -4,12 +4,15 @@
  *
  *   tv-voice-bridge-hub --port 8790 --public-url https://tv.example.com
  *
- * The hub relays transcripts, intents, acks and say lines between TVs and phones. With `--echo` it also answers each
- * final itself ("You said: ..."), which is enough to try the loop. For a real app, import `BridgeHub` and pass
- * `onFinal`. Needs the `ws` package next to this one.
+ * The hub relays transcripts, intents, acks and say lines between TVs and phones, and serves a phone page at the
+ * join URL it prints. With `--echo` it also answers each final itself ("You said: ..."), which is enough to try the
+ * loop. For a real app, import `BridgeHub` and pass `onFinal`. Needs the `ws` package next to this one.
  */
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { networkInterfaces } from 'node:os';
+import { extname, join, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { BridgeHub, forwardedClient } from './hub.js';
 
@@ -21,6 +24,7 @@ const HELP = `Usage: tv-voice-bridge-hub [options]
   --public-url <url>  Base of the join URL phones open: <url>/p/<code>
                       (default http://<this machine's LAN address>:<port>)
   --join-url <tpl>    Full join URL template instead, with {code}, e.g. https://app.example/join/{code}
+  --no-phone          Do not serve the phone page at /p/<code> (when --join-url points at your own page)
   --echo              Answer each final transcript: "You said: ..." as an intent and a say line
   --trust-proxy       Rate-limit by the client address a reverse proxy or tunnel appends to X-Forwarded-For.
                       Read only from a proxy on this machine (loopback) or one named with --proxy
@@ -29,7 +33,47 @@ const HELP = `Usage: tv-voice-bridge-hub [options]
   --quiet             Do not log joins and leaves
   -h, --help          Show this help
 
+GET /p/<code> serves a phone page (hold to talk, hands-free, or type) and /lib/ the modules it imports.
+Browsers allow the microphone only on https or localhost: over plain http on the LAN the page offers typing.
 GET /healthz answers {"ok":true,"rooms":<n>}.`;
+
+// The phone page ships with the package; its modules are the package's own build. Both src/ and dist/ sit one
+// level below the package root, so this resolves the same from either.
+const PACKAGE_ROOT = fileURLToPath(new URL('..', import.meta.url));
+const PHONE_PAGE = join(PACKAGE_ROOT, 'examples', 'minimal-phone', 'phone.html');
+const LIB = join(PACKAGE_ROOT, 'dist');
+const TYPES: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.map': 'application/json' };
+
+/**
+ * Serve the phone page at `/p/<code>` and the browser modules it imports at `/lib/` (files of the package's
+ * `dist/` only). Returns false when the request is for neither, so the caller answers it.
+ */
+export function servePhonePage(req: IncomingMessage, res: ServerResponse): boolean {
+  let path: string;
+  try {
+    path = decodeURIComponent(new URL(req.url ?? '/', 'http://x').pathname);
+  } catch {
+    return false;
+  }
+  let file: string | null = null;
+  if (path.startsWith('/p/')) file = PHONE_PAGE;
+  else if (path.startsWith('/lib/')) {
+    const f = resolve(LIB, `.${path.slice(4)}`);
+    file = f.startsWith(LIB + sep) && (extname(f) === '.js' || extname(f) === '.map') ? f : '';
+  } else return false;
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    res.writeHead(405, { allow: 'GET, HEAD' }).end();
+    return true;
+  }
+  if (!file || !existsSync(file) || !statSync(file).isFile()) {
+    res.writeHead(404, { 'content-type': 'text/plain' }).end('not found\n');
+    return true;
+  }
+  const body = readFileSync(file);
+  res.writeHead(200, { 'content-type': TYPES[extname(file)] ?? 'application/octet-stream', 'content-length': body.length });
+  res.end(req.method === 'HEAD' ? undefined : body);
+  return true;
+}
 
 /** This machine's first non-internal IPv4 address: what a phone on the same Wi-Fi can reach. */
 export function lanAddress(): string {
@@ -44,6 +88,8 @@ export interface HubCliOptions {
   publicUrl?: string;
   joinUrl?: string;
   echo: boolean;
+  /** Serve the phone page at /p/<code>. Default true. */
+  phonePage?: boolean;
   trustProxy: boolean;
   /** With trustProxy: proxy addresses trusted besides loopback. */
   proxies?: string[];
@@ -62,6 +108,7 @@ export function parseHubArgs(argv: string[], env: Record<string, string | undefi
       'public-url': { type: 'string' },
       'join-url': { type: 'string' },
       echo: { type: 'boolean' },
+      'no-phone': { type: 'boolean' },
       'trust-proxy': { type: 'boolean' },
       proxy: { type: 'string', multiple: true },
       'proxy-hops': { type: 'string' },
@@ -84,6 +131,7 @@ export function parseHubArgs(argv: string[], env: Record<string, string | undefi
     publicUrl: values['public-url']?.replace(/\/+$/, ''),
     joinUrl,
     echo: values.echo ?? false,
+    phonePage: !values['no-phone'],
     trustProxy: values['trust-proxy'] ?? false,
     proxies: values.proxy ?? [],
     proxyHops,
@@ -98,6 +146,7 @@ export async function startHubCli(o: HubCliOptions, log: (line: string) => void 
       res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: true, rooms: hub.rooms.size }));
       return;
     }
+    if (o.phonePage !== false && servePhonePage(req, res)) return;
     res.writeHead(404, { 'content-type': 'text/plain' }).end('tv-voice-bridge hub: connect a WebSocket to ' + o.path + '\n');
   });
   await new Promise<void>((resolve, reject) => {

@@ -9,6 +9,7 @@ RUN npm ci --ignore-scripts --no-audit --no-fund
 COPY tsconfig.build.json README.md PROTOCOL.md CHANGELOG.md LICENSE ./
 COPY src ./src
 COPY types ./types
+COPY examples/minimal-phone/phone.html ./examples/minimal-phone/
 RUN npm run build && npm pack --ignore-scripts --pack-destination /tmp
 
 FROM node:22-alpine
