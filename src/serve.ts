@@ -60,7 +60,7 @@ export function servePhonePage(req: IncomingMessage, res: ServerResponse, opts: 
     return true;
   }
   let body = readFileSync(file);
-  if (file === PHONE_PAGE) body = Buffer.from(body.toString('utf8').replace(PATH_META, `<meta name="${PHONE_PATH_META}" content="${attr(opts.path ?? '/ws')}" />`), 'utf8');
+  if (file === PHONE_PAGE) body = Buffer.from(body.toString('utf8').replace(PATH_META, () => `<meta name="${PHONE_PATH_META}" content="${attr(opts.path ?? '/ws')}" />`), 'utf8');
   res.writeHead(200, { 'content-type': TYPES[extname(file)] ?? 'application/octet-stream', 'content-length': body.length });
   res.end(req.method === 'HEAD' ? undefined : body);
   return true;

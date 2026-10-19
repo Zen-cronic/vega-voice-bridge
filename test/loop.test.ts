@@ -237,6 +237,14 @@ describe('tv-voice-bridge-hub (CLI)', () => {
     } finally {
       await odd.close();
     }
+    // Replacement patterns in the path are written as they are, not expanded.
+    const dollar = await startHubCli({ port: 0, host: '127.0.0.1', path: "/ws$&$'$`$$", echo: false, trustProxy: false, quiet: true }, () => undefined);
+    try {
+      const html = await (await fetch(`http://127.0.0.1:${dollar.port}/p/ABCD`)).text();
+      expect(/<meta name="tv-voice-bridge-path" content="([^"]*)"/.exec(html)?.[1]).toBe("/ws$&amp;$'$`$$");
+    } finally {
+      await dollar.close();
+    }
   });
 
   it('the join URL it prints opens a phone page, with its modules under /lib/ and nothing else', async () => {
