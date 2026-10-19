@@ -5,6 +5,9 @@
 The wire protocol is still **v1**. Everything below is additive.
 
 ### Changed
+- `sendFinal()` returns null and `sendPartial()` false when nothing was sent (not connected, or the socket refused it); a tracked `sendApp()` returns null the same way. Before, they returned an id as if delivered, so a page showed "sent" for a lost utterance. `./phone` reports such a final as `dropped` with reason `not-connected`.
+- An `onApp` handler that rejects is logged once (`handler-failed`), not a second time as `message-failed`.
+- `examples/minimal-vega` uses `useVoiceBridge` and `createVegaSayPlayer`: a say queue, priority interrupts and every playback state, in about 40 lines.
 - The package is now `tv-voice-bridge` (it was `@rackboard/tv-voice-bridge`). Imports change their prefix only: `tv-voice-bridge`, `tv-voice-bridge/hub`, `tv-voice-bridge/react` and so on.
 
 ### Added

@@ -195,7 +195,7 @@ export function Screen() {
 
 ## Quick start: React Native for Vega
 
-[`examples/minimal-vega/App.tsx`](examples/minimal-vega/App.tsx) is a whole screen in about 80 lines. It is illustrative and not type-checked here, because it needs a Vega project's dependencies. Installed from a tarball, the package needs no Metro changes, because Metro resolves `dist/` through `exports`.
+[`examples/minimal-vega/App.tsx`](examples/minimal-vega/App.tsx) is a whole screen in about 40 lines on `useVoiceBridge` and `createVegaSayPlayer` ([`examples/vega-voice-loop`](examples/vega-voice-loop) is the built, measured version). It is not built in this repo, because it needs a Vega project's dependencies. Installed from a tarball, the package needs no Metro changes, because Metro resolves `dist/` through `exports`.
 
 ```tsx
 const tv = new BridgeClient({ url: 'ws://127.0.0.1:8800/ws', role: 'screen' });
