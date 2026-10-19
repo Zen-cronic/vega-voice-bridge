@@ -36,8 +36,10 @@ export function hubUrlFromLocation(loc: LocationLike | undefined = currentLocati
 }
 
 export interface ConnectPhoneOptions extends Omit<ClientOptions, 'role' | 'url' | 'code'> {
-  /** Default: the page's host, path `/ws`. */
+  /** Default: the page's host, at `path`. */
   url?: string;
+  /** The hub's WebSocket path on the page's host, when `url` is not given. Default `/ws`. */
+  path?: string;
   /** Default: the code in the page's path (`/p/K7QF`). */
   code?: string;
   /** The first connection attempt failed (with reconnect on, the client keeps trying; watch `status`). */
@@ -46,11 +48,11 @@ export interface ConnectPhoneOptions extends Omit<ClientOptions, 'role' | 'url' 
 
 /** Connect this page as the room's mic. Throws when there is no pairing code to join with. */
 export function connectPhone(opts: ConnectPhoneOptions = {}): BridgeClient {
-  const { url, code, onError, ...rest } = opts;
+  const { url, path, code, onError, ...rest } = opts;
   const loc = currentLocation();
   const joinCode = code ?? (loc ? codeFromPath(loc.pathname) : null);
   if (!joinCode) throw new Error('tv-voice-bridge: no pairing code; pass code, or open the join URL (/p/<code>)');
-  const client = new BridgeClient({ ...rest, url: url ?? hubUrlFromLocation(loc), role: 'mic', code: joinCode });
+  const client = new BridgeClient({ ...rest, url: url ?? hubUrlFromLocation(loc, path), role: 'mic', code: joinCode });
   client.connect().catch((err: unknown) => onError?.(err instanceof Error ? err : new Error(String(err))));
   return client;
 }

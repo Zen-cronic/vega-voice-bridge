@@ -4,11 +4,12 @@ import type { IncomingMessage } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
 import { isEntry, parseHubArgs, startHubCli } from '../src/cli.js';
 import { forwardedClient } from '../src/hub.js';
 import { BridgeClient, type IntentMsg, type SayPayload } from '../src/index.js';
+import { connectPhone } from '../src/phone.js';
 // @ts-expect-error plain-JS example without type declarations
 import { runLoop } from '../examples/loop/loop.mjs';
 
@@ -37,6 +38,8 @@ describe('npm run example: the loop in one process', () => {
 });
 
 describe('tv-voice-bridge-hub (CLI)', () => {
+  afterEach(() => void vi.unstubAllGlobals());
+
   it('parses its flags, with defaults', () => {
     expect(parseHubArgs([])).toMatchObject({ port: 8790, host: '0.0.0.0', path: '/ws', echo: false });
     expect(parseHubArgs([], { PORT: '9000' })).toMatchObject({ port: 9000 });
@@ -142,6 +145,38 @@ describe('tv-voice-bridge-hub (CLI)', () => {
       phone.close();
     } finally {
       await app.close();
+    }
+  });
+
+  it('with --path, the phone page it serves connects to that path, not /ws', async () => {
+    expect(() => parseHubArgs(['--path', 'bridge'])).toThrow(/--path must start with \//);
+    const app = await startHubCli({ ...(parseHubArgs(['--port', '0', '--host', '127.0.0.1', '--path', '/bridge', '--quiet']) as Exclude<ReturnType<typeof parseHubArgs>, 'help'>) }, () => undefined);
+    const closers: Array<() => void> = [];
+    try {
+      const tv = new BridgeClient({ url: `ws://127.0.0.1:${app.port}/bridge`, role: 'screen', reconnect: false });
+      closers.push(() => tv.close());
+      const { code, joinUrl } = await tv.connect();
+      const html = await (await fetch(joinUrl!)).text();
+      const path = /<meta name="tv-voice-bridge-path" content="([^"]*)"/.exec(html)?.[1];
+      expect(path).toBe('/bridge');
+      // What the page does with it: connect on its own host at that path, with the code from its address.
+      vi.stubGlobal('location', { protocol: 'http:', host: `127.0.0.1:${app.port}`, pathname: new URL(joinUrl!).pathname });
+      const phone = connectPhone({ path, reconnect: false });
+      closers.push(() => phone.close());
+      expect(phone.code).toBe(code);
+      await vi.waitFor(() => expect(phone.status).toBe('open'));
+    } finally {
+      closers.forEach((c) => c());
+      await app.close();
+    }
+    // The path lands in an attribute, escaped.
+    const odd = await startHubCli({ port: 0, host: '127.0.0.1', path: '/a"><script>x</script>', echo: false, trustProxy: false, quiet: true }, () => undefined);
+    try {
+      const html = await (await fetch(`http://127.0.0.1:${odd.port}/p/ABCD`)).text();
+      expect(html).toContain('content="/a&quot;&gt;&lt;script&gt;x&lt;/script&gt;"');
+      expect(html).not.toContain('<script>x');
+    } finally {
+      await odd.close();
     }
   });
 

@@ -3,6 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- The hub's WebSocket path; a hub serving this page writes its own path here. -->
+    <meta name="tv-voice-bridge-path" content="/ws" />
     <title>tv-voice-bridge: phone mic</title>
     <style>
       body { margin: 0; padding: 20px; background: #0b0d11; color: #f4f6f8; font: 18px/1.4 system-ui, sans-serif; }
@@ -31,8 +33,9 @@
       import { connectPhone, createPhoneMic } from '/lib/phone.js';
       const $ = (id) => document.getElementById(id);
 
-      // The hub URL and the pairing code come from this page's address (/p/<code>).
-      const phone = connectPhone({ onError: (e) => ($('status').textContent = e.message) });
+      // The hub URL and the pairing code come from this page's address (/p/<code>), the path from the meta tag.
+      const path = document.querySelector('meta[name="tv-voice-bridge-path"]')?.content || '/ws';
+      const phone = connectPhone({ path, onError: (e) => ($('status').textContent = e.message) });
       phone.on('ack', (a) => ($('lat').textContent = `speech end → TV render: ${latency(a.hops).span('speech.end', 'screen.render')} ms`));
       phone.on('open', () => ($('status').textContent = `paired with ${phone.code}`));
       phone.on('reconnecting', () => ($('status').textContent = 'reconnecting…'));

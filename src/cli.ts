@@ -19,7 +19,7 @@ const HELP = `Usage: tv-voice-bridge-hub [options]
 
   --port <n>          Port to listen on (default 8790, or $PORT)
   --host <addr>       Address to bind (default 0.0.0.0)
-  --path <path>       WebSocket path (default /ws)
+  --path <path>       WebSocket path (default /ws); the phone page it serves connects there
   --public-url <url>  Base of the join URL phones open: <url>/p/<code>
                       (default http://<this machine's LAN address>:<port>)
   --join-url <tpl>    Full join URL template instead, with {code}, e.g. https://app.example/join/{code}
@@ -77,12 +77,14 @@ export function parseHubArgs(argv: string[], env: Record<string, string | undefi
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error(`--port must be 0..65535, got ${String(values.port ?? env.PORT)}`);
   const joinUrl = values['join-url'];
   if (joinUrl !== undefined && !joinUrl.includes('{code}')) throw new Error('--join-url must contain {code}');
+  const path = values.path ?? '/ws';
+  if (!path.startsWith('/')) throw new Error(`--path must start with /, got ${path}`);
   const proxyHops = Number(values['proxy-hops'] ?? 1);
   if (!Number.isInteger(proxyHops) || proxyHops < 1) throw new Error(`--proxy-hops must be a whole number from 1, got ${String(values['proxy-hops'])}`);
   return {
     port,
     host: values.host ?? '0.0.0.0',
-    path: values.path ?? '/ws',
+    path,
     publicUrl: values['public-url']?.replace(/\/+$/, ''),
     joinUrl,
     echo: values.echo ?? false,
@@ -101,7 +103,7 @@ export async function startHubCli(o: HubCliOptions, log: (line: string) => void 
       res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: true, rooms: hub.rooms.size }));
       return;
     }
-    if (o.phonePage !== false && servePhonePage(req, res)) return;
+    if (o.phonePage !== false && servePhonePage(req, res, { path: o.path })) return;
     res.writeHead(404, { 'content-type': 'text/plain' }).end('tv-voice-bridge hub: connect a WebSocket to ' + o.path + '\n');
   });
   await new Promise<void>((resolve, reject) => {
