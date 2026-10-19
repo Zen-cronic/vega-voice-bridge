@@ -111,6 +111,18 @@ describe('tv-voice-bridge-hub (CLI)', () => {
     expect(forwardedClient(req('127.0.0.1', '6.6.6.6, 203.0.113.7, 10.0.0.9'), { hops: 2 })).toBe('10.0.0.9');
   });
 
+  it('forwardedClient keys on the bare address: a port the proxy appended does not make a new key per connection', () => {
+    const req = (remoteAddress: string, xff?: string) => ({ socket: { remoteAddress }, headers: xff === undefined ? {} : { 'x-forwarded-for': xff } }) as unknown as IncomingMessage;
+    const v4 = new Set(Array.from({ length: 20 }, (_, i) => forwardedClient(req('127.0.0.1', `6.6.6.6, 203.0.113.7:${51544 + i}`))));
+    expect([...v4]).toEqual(['203.0.113.7']);
+    const v6 = new Set(Array.from({ length: 20 }, (_, i) => forwardedClient(req('127.0.0.1', `[2001:db8::7]:${443 + i}`))));
+    expect([...v6]).toEqual(['2001:db8::7']);
+    expect(forwardedClient(req('127.0.0.1', '6.6.6.6, 203.0.113.7:51544, 10.0.0.9:443'), { hops: 2, proxies: ['10.0.0.0/8'] })).toBe('203.0.113.7');
+    // The socket fallbacks are bare too.
+    expect(forwardedClient(req('::ffff:198.51.100.4', '203.0.113.7'))).toBe('198.51.100.4');
+    expect(forwardedClient(req('::ffff:127.0.0.1'))).toBe('127.0.0.1');
+  });
+
   it('a --proxy that is not an address or CIDR range is refused, not silently ignored', () => {
     expect(parseHubArgs(['--proxy', '203.0.113.0/24', '--proxy', '2001:db8::/32'])).toMatchObject({ proxies: ['203.0.113.0/24', '2001:db8::/32'] });
     for (const bad of ['proxy.local', '10.0.0.0/', '10.0.0.0/33', '10.0.0.0/8/1', '2001:db8::/129'])

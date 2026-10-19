@@ -209,22 +209,24 @@ export function proxyMatcher(proxies: string[] = []): (addr: string) => boolean 
  * `proxies`; otherwise the socket's own address is the key. The header is read from the end: the last entry is the
  * client unless it is itself a trusted proxy, in which case the one before it is next, and so on, passing over at
  * most `hops - 1` proxies. So a client that reaches an inner proxy directly, skipping the outer one, is keyed on its
- * own address, never on what it wrote into the header. With no entries, the key is the socket's address.
+ * own address, never on what it wrote into the header. With no entries, the key is the socket's address. The key is
+ * the bare IP: a port a proxy appended (`203.0.113.7:51544`, `[2001:db8::7]:443`) is dropped, so a new connection
+ * does not get a new key.
  */
 export function forwardedClient(req: IncomingMessage, o: ForwardedClientOptions = {}): string {
   const peer = req.socket?.remoteAddress ?? 'unknown';
   const trusted = proxyMatcher(o.proxies);
-  if (!trusted(peer)) return peer;
+  if (!trusted(peer)) return bareIp(peer);
   const raw = req.headers['x-forwarded-for'];
   const entries = (Array.isArray(raw) ? raw.join(',') : (raw ?? ''))
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
-  if (entries.length === 0) return peer;
+  if (entries.length === 0) return bareIp(peer);
   const hops = Math.max(1, Math.floor(o.hops ?? 1));
   let i = entries.length - 1;
   for (let passed = 1; passed < hops && i > 0 && trusted(entries[i]!); passed++) i--;
-  return entries[i]!;
+  return bareIp(entries[i]!);
 }
 
 function rawToString(data: RawData): string {
