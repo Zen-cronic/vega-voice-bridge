@@ -92,10 +92,29 @@ describe('tv-voice-bridge-hub (CLI)', () => {
     // Not from a proxy: the header is the client's own claim.
     expect(forwardedClient(req('198.51.100.4', '203.0.113.7'))).toBe('198.51.100.4');
     expect(forwardedClient(req('10.0.0.2', '6.6.6.6, 203.0.113.7'), { proxies: ['10.0.0.2'] })).toBe('203.0.113.7');
-    // Two proxies, each appending: the client is second from the end.
-    expect(forwardedClient(req('127.0.0.1', '6.6.6.6, 203.0.113.7, 10.0.0.9'), { hops: 2 })).toBe('203.0.113.7');
-    expect(forwardedClient(req('127.0.0.1', '203.0.113.7'), { hops: 2 })).toBe('127.0.0.1');
+    // Two proxies, each appending (a CDN in front of a local nginx): the client is second from the end, once the
+    // CDN's address is known to be a proxy.
+    expect(forwardedClient(req('127.0.0.1', '6.6.6.6, 203.0.113.7, 10.0.0.9'), { hops: 2, proxies: ['10.0.0.0/8'] })).toBe('203.0.113.7');
+    expect(forwardedClient(req('127.0.0.1', '6.6.6.6, 203.0.113.7, 10.0.0.9'), { hops: 2, proxies: ['10.0.0.9'] })).toBe('203.0.113.7');
+    expect(forwardedClient(req('127.0.0.1', '203.0.113.7'), { hops: 2 })).toBe('203.0.113.7');
     expect(forwardedClient(req('127.0.0.1'))).toBe('127.0.0.1');
+    expect(forwardedClient(req('127.0.0.1', '6.6.6.6, 2001:db8::7, [2001:db9::1]:443'), { hops: 2, proxies: ['2001:db9::/32'] })).toBe('2001:db8::7');
+  });
+
+  it('forwardedClient with two proxies: a client that skips the outer one is keyed on its own address', () => {
+    const req = (remoteAddress: string, xff: string) => ({ socket: { remoteAddress }, headers: { 'x-forwarded-for': xff } }) as unknown as IncomingMessage;
+    const o = { hops: 2, proxies: ['10.0.0.0/8'] };
+    // Straight to nginx with a made-up header: nginx appends the real address, and that is not a CDN address.
+    const keys = new Set(Array.from({ length: 20 }, (_, i) => forwardedClient(req('127.0.0.1', `10.9.${i}.1, 198.51.100.9`), o)));
+    expect([...keys]).toEqual(['198.51.100.9']);
+    // Not naming the CDN at all is the safe side: every CDN client shares the CDN's key, nobody picks their own.
+    expect(forwardedClient(req('127.0.0.1', '6.6.6.6, 203.0.113.7, 10.0.0.9'), { hops: 2 })).toBe('10.0.0.9');
+  });
+
+  it('a --proxy that is not an address or CIDR range is refused, not silently ignored', () => {
+    expect(parseHubArgs(['--proxy', '203.0.113.0/24', '--proxy', '2001:db8::/32'])).toMatchObject({ proxies: ['203.0.113.0/24', '2001:db8::/32'] });
+    for (const bad of ['proxy.local', '10.0.0.0/', '10.0.0.0/33', '10.0.0.0/8/1', '2001:db8::/129'])
+      expect(() => parseHubArgs(['--proxy', bad]), bad).toThrow(/--proxy takes an address or a CIDR range/);
   });
 
   it('--trust-proxy: a client that varies its own X-Forwarded-For still hits the wrong-code limit', async () => {

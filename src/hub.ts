@@ -1,4 +1,5 @@
 import type { IncomingMessage, Server } from 'node:http';
+import { BlockList, isIP } from 'node:net';
 import type { Duplex } from 'node:stream';
 import { WebSocketServer, type RawData, type WebSocket } from 'ws';
 import {
@@ -157,7 +158,11 @@ export function errorText(err: unknown): string {
 }
 
 export interface ForwardedClientOptions {
-  /** Addresses of proxies whose `X-Forwarded-For` is trusted, besides loopback. */
+  /**
+   * Proxies whose `X-Forwarded-For` is trusted, besides loopback: addresses or CIDR ranges (`10.0.0.2`,
+   * `203.0.113.0/24`, `2001:db8::/32`). With `hops` above 1, list every proxy in the chain, the outer ones too
+   * (a CDN's published ranges): an entry is passed over only when it is one of these.
+   */
   proxies?: string[];
   /** Proxies in front of the hub, each appending to `X-Forwarded-For`. Default 1. */
   hops?: number;
@@ -166,24 +171,60 @@ export interface ForwardedClientOptions {
 const unmapped = (addr: string) => (addr.startsWith('::ffff:') ? addr.slice(7) : addr);
 const isLoopback = (addr: string) => addr === '::1' || unmapped(addr).startsWith('127.');
 
+/** The bare IP in an address as proxies write it: `::ffff:` mapping, `[v6]:port` and `v4:port` removed. */
+function bareIp(addr: string): string {
+  let a = addr.trim();
+  const bracketed = /^\[([^\]]+)\](?::\d+)?$/.exec(a);
+  if (bracketed) a = bracketed[1]!;
+  else if (/^[\d.]+:\d+$/.test(a)) a = a.slice(0, a.lastIndexOf(':'));
+  return unmapped(a);
+}
+
+/**
+ * A test for "is this address a trusted proxy": loopback, or one of `proxies` (addresses or CIDR ranges). Throws on
+ * an entry that is neither, so a typo does not silently trust nothing.
+ */
+export function proxyMatcher(proxies: string[] = []): (addr: string) => boolean {
+  const list = new BlockList();
+  for (const p of proxies) {
+    const [ip = '', bits, extra] = p.trim().split('/');
+    const family = isIP(bareIp(ip));
+    const max = family === 6 ? 128 : 32;
+    const prefix = bits === undefined ? max : /^\d{1,3}$/.test(bits) ? Number(bits) : NaN;
+    if (!family || extra !== undefined || !(prefix >= 0 && prefix <= max)) throw new Error(`tv-voice-bridge: not an address or CIDR range: ${p}`);
+    list.addSubnet(bareIp(ip), prefix, family === 6 ? 'ipv6' : 'ipv4');
+  }
+  return (addr) => {
+    const ip = bareIp(addr);
+    const family = isIP(ip);
+    if (!family) return false;
+    return isLoopback(ip) || list.check(ip, family === 6 ? 'ipv6' : 'ipv4');
+  };
+}
+
 /**
  * The client's address behind a reverse proxy or a tunnel, for `rateKey`. Each proxy appends the address it received
- * the request from, so only the entries at the end are trustworthy; whatever comes before them is what the client
- * sent. With `hops` proxies the client is the `hops`-th entry from the end. The header counts only when the socket's
- * peer is loopback (a tunnel agent or a proxy on this machine) or one of `proxies`. Otherwise, or when the header has
- * fewer entries than `hops`, the socket's own address is the key.
+ * the request from, so only entries at the end can be trusted; whatever comes before them is what the client sent.
+ * The header counts only when the socket's peer is loopback (a tunnel agent or a proxy on this machine) or one of
+ * `proxies`; otherwise the socket's own address is the key. The header is read from the end: the last entry is the
+ * client unless it is itself a trusted proxy, in which case the one before it is next, and so on, passing over at
+ * most `hops - 1` proxies. So a client that reaches an inner proxy directly, skipping the outer one, is keyed on its
+ * own address, never on what it wrote into the header. With no entries, the key is the socket's address.
  */
 export function forwardedClient(req: IncomingMessage, o: ForwardedClientOptions = {}): string {
   const peer = req.socket?.remoteAddress ?? 'unknown';
-  const trusted = isLoopback(peer) || (o.proxies ?? []).some((p) => unmapped(p) === unmapped(peer));
-  if (!trusted) return peer;
+  const trusted = proxyMatcher(o.proxies);
+  if (!trusted(peer)) return peer;
   const raw = req.headers['x-forwarded-for'];
   const entries = (Array.isArray(raw) ? raw.join(',') : (raw ?? ''))
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
+  if (entries.length === 0) return peer;
   const hops = Math.max(1, Math.floor(o.hops ?? 1));
-  return entries.length >= hops ? entries[entries.length - hops]! : peer;
+  let i = entries.length - 1;
+  for (let passed = 1; passed < hops && i > 0 && trusted(entries[i]!); passed++) i--;
+  return entries[i]!;
 }
 
 function rawToString(data: RawData): string {

@@ -12,7 +12,7 @@ import { realpathSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { BridgeHub, forwardedClient } from './hub.js';
+import { BridgeHub, forwardedClient, proxyMatcher } from './hub.js';
 import { lanAddress, servePhonePage } from './serve.js';
 
 const HELP = `Usage: tv-voice-bridge-hub [options]
@@ -27,8 +27,9 @@ const HELP = `Usage: tv-voice-bridge-hub [options]
   --echo              Answer each final transcript: "You said: ..." as an intent and a say line
   --trust-proxy       Rate-limit by the client address a reverse proxy or tunnel appends to X-Forwarded-For.
                       Read only from a proxy on this machine (loopback) or one named with --proxy
-  --proxy <addr>      Also trust X-Forwarded-For from a proxy at this address (repeatable)
-  --proxy-hops <n>    Proxies in front of the hub, each appending to X-Forwarded-For (default 1)
+  --proxy <addr>      Also trust a proxy at this address or CIDR range, e.g. 203.0.113.0/24 (repeatable)
+  --proxy-hops <n>    Proxies in front of the hub, each appending to X-Forwarded-For (default 1). Name every
+                      proxy in the chain with --proxy (a CDN's ranges too): only those entries are passed over
   --quiet             Do not log joins and leaves
   -h, --help          Show this help
 
@@ -81,6 +82,12 @@ export function parseHubArgs(argv: string[], env: Record<string, string | undefi
   if (!path.startsWith('/')) throw new Error(`--path must start with /, got ${path}`);
   const proxyHops = Number(values['proxy-hops'] ?? 1);
   if (!Number.isInteger(proxyHops) || proxyHops < 1) throw new Error(`--proxy-hops must be a whole number from 1, got ${String(values['proxy-hops'])}`);
+  const proxies = values.proxy ?? [];
+  try {
+    proxyMatcher(proxies);
+  } catch {
+    throw new Error(`--proxy takes an address or a CIDR range, got ${proxies.join(' ')}`);
+  }
   return {
     port,
     host: values.host ?? '0.0.0.0',
@@ -90,7 +97,7 @@ export function parseHubArgs(argv: string[], env: Record<string, string | undefi
     echo: values.echo ?? false,
     phonePage: !values['no-phone'],
     trustProxy: values['trust-proxy'] ?? false,
-    proxies: values.proxy ?? [],
+    proxies,
     proxyHops,
     quiet: values.quiet ?? false,
   };
