@@ -309,8 +309,9 @@ export class EchoGuard {
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
     const t = this.now();
-    // Forget lines that ended long ago.
-    for (const [id, l] of this.lines) if (l.until <= t && l.endedAt !== null && t - l.endedAt > 60_000) this.lines.delete(id);
+    // Forget lines whose hold ran out over a minute ago, ended or not: a screen that reports nothing leaves its
+    // lines only queued, and every check scans them all.
+    for (const [id, l] of this.lines) if (t - Math.max(l.until, l.endedAt ?? -Infinity) > 60_000) this.lines.delete(id);
     const active = this.active;
     if (active !== this.wasActive) {
       this.wasActive = active;

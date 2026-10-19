@@ -437,6 +437,21 @@ describe('EchoGuard (clocked)', () => {
     g.dispose();
   });
 
+  it('forgets lines that were only queued (a screen that reports nothing), once their hold is long over', () => {
+    vi.useFakeTimers();
+    const g = new EchoGuard({ tailMs: 100, now: () => Date.now() });
+    const size = () => (g as unknown as { lines: Map<string, unknown> }).lines.size;
+    for (let i = 0; i < 50; i++) {
+      g.notice({ id: `q${i}`, state: 'queued', durationMs: 1000 });
+      vi.advanceTimersByTime(5000);
+    }
+    expect(size()).toBeLessThanOrEqual(15);
+    vi.advanceTimersByTime(120_000);
+    g.notice({ id: 'last', state: 'queued', durationMs: 1000 });
+    expect(size()).toBe(1);
+    g.dispose();
+  });
+
   it('echo matching ignores case, accents and punctuation, and needs three words unless it is the whole line', () => {
     expect(isEcho('Rest two minutes', 'Rest two minutes.')).toBe(true);
     expect(isEcho('then do your last set', 'Rest two minutes, then do your last set')).toBe(true);
