@@ -124,7 +124,6 @@ export function createVegaSayPlayer(opts: VegaSayPlayerOptions = {}): VegaSayPla
     const mine = ++latest;
     let stopped = false;
     let held: Player | null = null;
-    let mse = false;
     // Checked after every await: a line stopped or superseded meanwhile must not reach the player.
     const live = () => !stopped && latest === mine;
     const claim = () => void (owner = { line: mine, ctl });
@@ -137,8 +136,7 @@ export function createVegaSayPlayer(opts: VegaSayPlayerOptions = {}): VegaSayPla
       held = p;
       if (/^https:/i.test(url)) {
         claim();
-        // A srcObject left by an earlier http line would win over src.
-        p.srcObject = null;
+        // Setting src replaces a stream an earlier http line attached. Vega throws on srcObject = null.
         p.src = url;
         await p.play();
         return;
@@ -149,7 +147,6 @@ export function createVegaSayPlayer(opts: VegaSayPlayerOptions = {}): VegaSayPla
       if (!isMp4(url, res.headers.get('content-type'))) throw new Error(RAW_HTTP_AUDIO);
       const bytes = await res.arrayBuffer();
       if (!live()) return;
-      mse = true;
       await viaMse(p, bytes, live, claim);
     })().catch((err: unknown) => {
       if (!live()) return;
@@ -163,8 +160,6 @@ export function createVegaSayPlayer(opts: VegaSayPlayerOptions = {}): VegaSayPla
       owner = null;
       try {
         held?.pause();
-        // Detach the stream too, so nothing more of it is demuxed or played.
-        if (mse && held) held.srcObject = null;
       } catch {
         // the player may be between sources
       }

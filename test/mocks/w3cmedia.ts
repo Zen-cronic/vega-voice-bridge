@@ -57,17 +57,26 @@ export class MediaSource extends Events {
 }
 
 export class AudioPlayer extends Events {
-  src = '';
+  private url = '';
   error: { code?: number; message?: string } | null = null;
   private obj: unknown = null;
   constructor() {
     super();
     media.players.push(this);
   }
+  // As on a Vega device: setting src replaces an attached stream, and setting srcObject to null throws.
+  get src() {
+    return this.url;
+  }
+  set src(v: string) {
+    this.url = v;
+    this.obj = null;
+  }
   get srcObject() {
     return this.obj;
   }
   set srcObject(v: unknown) {
+    if (v == null) throw new TypeError("Cannot read property 'setMediaEventRouter' of null");
     this.obj = v;
     media.onSrcObject?.(v);
     if (v instanceof MediaSource) void tick().then(() => v.fire('sourceopen'));
@@ -83,8 +92,7 @@ export class AudioPlayer extends Events {
     media.log.push('deinitialize');
   }
   async play() {
-    // As in the W3C media model, a srcObject wins over src.
-    media.log.push(this.obj ? 'play mse' : this.src ? `play ${this.src}` : 'play (no source)');
+    media.log.push(this.obj ? 'play mse' : this.url ? `play ${this.url}` : 'play (no source)');
     void (async () => {
       for (const e of media.script) {
         await tick();
