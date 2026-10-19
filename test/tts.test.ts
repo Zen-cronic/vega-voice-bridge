@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -22,16 +22,42 @@ describe('the voice loop text-to-speech', () => {
   });
 
   it('TTS_ENGINE=polly asks the AWS CLI for a generative Ruth clip in us-east-1 unless told otherwise', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tts-'));
+    dirs.push(dir);
     const r = recorder();
     const e = ttsEngine({ TTS_ENGINE: 'polly' }, { run: r.run, os: 'linux' });
     expect(e.name).toBe('polly (generative Ruth)');
-    expect(await e.render('-1 is the answer.', '/tmp/x/abc')).toBe('/tmp/x/abc.polly.mp3');
+    expect(await e.render('-1 is the answer.', join(dir, 'abc'))).toBe(join(dir, 'abc.polly.mp3'));
     expect(r.calls[0]?.cmd).toBe('aws');
-    expect(r.calls[0]?.args).toEqual(['polly', 'synthesize-speech', '--region', 'us-east-1', '--engine', 'generative', '--voice-id', 'Ruth', '--output-format', 'mp3', '--sample-rate', '24000', '--text=-1 is the answer.', '/tmp/x/abc.polly.mp3']);
+    expect(r.calls[0]?.args).toEqual(['polly', 'synthesize-speech', '--region', 'us-east-1', '--engine', 'generative', '--voice-id', 'Ruth', '--output-format', 'mp3', '--sample-rate', '24000', '--text', `file://${join(dir, 'abc.polly.txt')}`, join(dir, 'abc.polly.mp3')]);
+    expect(r.calls[0]?.env).toEqual({ AWS_CLI_FILE_ENCODING: 'UTF-8' });
     const n = ttsEngine({ TTS_ENGINE: 'polly', POLLY_VOICE: 'Matthew', POLLY_ENGINE: 'neural', AWS_REGION: 'us-west-2' }, { run: r.run });
     expect(n.name).toBe('polly (neural Matthew)');
-    await n.render('Hi.', '/tmp/x/def');
+    await n.render('Hi.', join(dir, 'def'));
     expect(r.calls[1]?.args.slice(2, 8)).toEqual(['--region', 'us-west-2', '--engine', 'neural', '--voice-id', 'Matthew']);
+  });
+
+  it('Polly gets the reply text from a file, so text that starts with file://, fileb:// or a URL is spoken, not loaded', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tts-'));
+    dirs.push(dir);
+    const seen: Array<{ args: string[]; text: string }> = [];
+    // Stands in for the AWS CLI: reads the --text file the way the CLI does, while it exists.
+    const run = async (_cmd: string, args: string[]) => {
+      const v = args[args.indexOf('--text') + 1]!;
+      seen.push({ args, text: readFileSync(v.slice('file://'.length), 'utf8') });
+    };
+    const e = ttsEngine({ TTS_ENGINE: 'polly' }, { run, os: 'linux' });
+    const hostile = ['file:///home/someone/.aws/credentials', 'fileb:///etc/hostname', 'https://example.invalid/x', 'http://example.invalid/x', 'Café — ok'];
+    for (const [i, text] of hostile.entries()) await e.render(text, join(dir, `h${i}`));
+    for (const [i, call] of seen.entries()) {
+      // No argument the CLI parses is the reply itself; the only file:// value is our own input file.
+      for (const a of call.args) expect(a).not.toContain(hostile[i]);
+      expect(call.text).toBe(hostile[i]);
+    }
+    // The input file is gone afterwards, whether the CLI succeeded or not.
+    const failing = ttsEngine({ TTS_ENGINE: 'polly' }, { run: async () => Promise.reject(new Error('aws: no credentials')), os: 'linux' });
+    await expect(failing.render('x', join(dir, 'f'))).rejects.toThrow(/no credentials/);
+    expect(readdirSync(dir)).toEqual([]);
   });
 
   it('TTS_CMD wins over every other engine', () => {

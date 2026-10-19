@@ -6,7 +6,7 @@
 //   ffmpeg does the encoding.
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { platform } from 'node:os';
 import { join } from 'node:path';
 
@@ -20,8 +20,19 @@ export function ttsEngine(env = process.env, { run = exec, os = platform() } = {
     const region = env.AWS_REGION || 'us-east-1';
     return {
       name: `polly (${engine} ${voice})`,
-      render: (text, base) =>
-        run('aws', ['polly', 'synthesize-speech', '--region', region, '--engine', engine, '--voice-id', voice, '--output-format', 'mp3', '--sample-rate', '24000', `--text=${text}`, `${base}.polly.mp3`]).then(() => `${base}.polly.mp3`),
+      // The text goes to the AWS CLI in a file (--text file://<path>), never as the value itself: the CLI reads a
+      // value that starts with file:// or fileb:// (and, in v1, fetches http(s)://) instead of using it, so a reply
+      // that began with one would be replaced by that file. A file's contents are used as they are.
+      render: async (text, base) => {
+        const input = `${base}.polly.txt`;
+        writeFileSync(input, text, { encoding: 'utf8', mode: 0o600 });
+        try {
+          await run('aws', ['polly', 'synthesize-speech', '--region', region, '--engine', engine, '--voice-id', voice, '--output-format', 'mp3', '--sample-rate', '24000', '--text', `file://${input}`, `${base}.polly.mp3`], { AWS_CLI_FILE_ENCODING: 'UTF-8' });
+        } finally {
+          rmSync(input, { force: true });
+        }
+        return `${base}.polly.mp3`;
+      },
     };
   }
   if (os === 'darwin') {
