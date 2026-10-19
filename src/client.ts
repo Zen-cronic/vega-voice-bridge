@@ -13,10 +13,16 @@ import {
   type Role,
   type SayPayload,
   type SayStatus,
+  type SayStop,
+  type SpeechNotice,
   type WelcomeMsg,
   SAY_STATUS_TOPIC,
+  SAY_STOP_TOPIC,
   SAY_TOPIC,
+  SPEECH_TOPIC,
   parseSay,
+  parseSayStop,
+  parseSpeech,
 } from './protocol.js';
 
 type WSLike = {
@@ -385,10 +391,14 @@ export class BridgeClient {
     }
   }
 
-  /** Mic: send a final transcript. speechEndAt is local (performance.timeOrigin + now) time of speech end. */
-  sendFinal(text: string, opts: { speechEndAt?: number; utteranceId?: string } = {}): string {
+  /**
+   * Mic: send a final transcript. `speechStartAt` and `speechEndAt` are local times (`localNow()`) of when the
+   * speech started and ended; they become the `speech.start` and `speech.end` hops in hub clock.
+   */
+  sendFinal(text: string, opts: { speechEndAt?: number; speechStartAt?: number; utteranceId?: string } = {}): string {
     const utteranceId = opts.utteranceId ?? newId('utt');
     const hops: Hop[] = [];
+    if (opts.speechStartAt !== undefined) hops.push({ hop: 'speech.start', at: opts.speechStartAt + this.offsetMs });
     if (opts.speechEndAt !== undefined) hops.push({ hop: 'speech.end', at: opts.speechEndAt + this.offsetMs });
     hops.push(this.hop('mic.send'));
     this.send({ type: 'transcript.final', utteranceId, text, hops });
@@ -433,6 +443,28 @@ export class BridgeClient {
   /** Screen: report playback of a line back to the hub (loading / playing / ended / error ...), stamped in hub clock. */
   reportSay(status: Omit<SayStatus, 'at'> & { at?: number }, topic: string = SAY_STATUS_TOPIC) {
     this.sendApp(topic, { ...status, at: status.at ?? this.now() });
+  }
+
+  /** Mic: follow what the TV is saying (`screen.speech`), for an echo guard. Invalid payloads are dropped. */
+  onSpeech(fn: (notice: SpeechNotice) => void): () => void {
+    return this.on('app', (m) => {
+      if (m.topic !== SPEECH_TOPIC) return;
+      const n = parseSpeech(m.payload);
+      if (n) fn(n);
+    });
+  }
+
+  /** Mic: ask the room's screens to stop talking (barge-in, or a stop button). */
+  stopSay(stop: SayStop = {}): boolean {
+    return this.send({ type: 'app', topic: SAY_STOP_TOPIC, payload: parseSayStop(stop) });
+  }
+
+  /** Screen: handle `screen.say.stop` (a phone or the app asks the TV to stop talking). */
+  onSayStop(fn: (stop: SayStop & { from?: string }) => void): () => void {
+    return this.on('app', (m) => {
+      if (m.topic !== SAY_STOP_TOPIC) return;
+      fn({ ...parseSayStop(m.payload), from: m.from });
+    });
   }
 
   /** Disconnect and stop reconnecting (also cancels a pending retry). A pending `connect()` rejects. */

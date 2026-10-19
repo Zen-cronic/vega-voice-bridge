@@ -25,6 +25,11 @@
       "types": "./dist/hub.d.ts",
       "default": "./dist/hub.js"
     },
+    "./phone": {
+      "source": "./src/phone.ts",
+      "types": "./dist/phone.d.ts",
+      "default": "./dist/phone.js"
+    },
     "./protocol": {
       "source": "./src/protocol.ts",
       "types": "./dist/protocol.d.ts",

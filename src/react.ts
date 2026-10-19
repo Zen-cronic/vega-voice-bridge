@@ -62,6 +62,8 @@ export interface UseVoiceBridgeOptions extends Omit<ClientOptions, 'role' | 'cod
   player?: SayPlayer;
   /** Report playback states to the hub on `screen.say.status`. Default true. */
   reportSay?: boolean;
+  /** Stop talking (and drop the queue) when a phone or the app sends `screen.say.stop`, e.g. a barge-in. Default true. */
+  interruptible?: boolean;
   /** The topic say lines arrive on. Default `screen.say`. */
   sayTopic?: string;
   onWelcome?: (welcome: WelcomeMsg) => void;
@@ -299,7 +301,7 @@ export function useVoiceBridge(options: UseVoiceBridgeOptions): VoiceBridge {
     const queue = new SayQueue({
       player: () => latest.current.player,
       report: (line, s, detail) => {
-        if (latest.current.reportSay !== false) client.reportSay({ id: line.id, state: s, detail });
+        if (latest.current.reportSay !== false) client.reportSay({ id: line.id, state: s, detail, text: line.text });
         call(latest.current.onSayState, line, s, detail);
       },
       show: (saying) => update(() => ({ saying })),
@@ -331,6 +333,9 @@ export function useVoiceBridge(options: UseVoiceBridgeOptions): VoiceBridge {
         call(latest.current.onSay, line);
         queue.push(line);
       }, sayTopic),
+      client.onSayStop(() => {
+        if (latest.current.interruptible !== false) queue.stop();
+      }),
     ];
     client.connect().catch(() => undefined); // with reconnect on (the default) it keeps retrying
 

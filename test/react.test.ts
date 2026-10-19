@@ -7,7 +7,9 @@ import TestRenderer, { act, type ReactTestInstance, type ReactTestRenderer } fro
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BridgeHub } from '../src/hub.js';
 import { BridgeClient, localNow, type AckMsg, type IntentMsg, type SayStatus } from '../src/index.js';
+import { createPhoneMic } from '../src/phone.js';
 import { qrMatrix, qrRuns } from '../src/qr.js';
+import { ScriptedRecognizer } from './helpers/recognizer.js';
 import { PairingQr, SayQueue, pairingQrLayout, useVoiceBridge, voiceBridgeStatus, type SayLine, type SayPlayer, type UseVoiceBridgeOptions, type VoiceBridge } from '../src/react.js';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -199,6 +201,34 @@ describe('useVoiceBridge', () => {
     await until(() => statuses.length === 3);
     expect(statuses.map((s) => `${s.id}:${s.state}`)).toEqual([`${id}:loading`, `${id}:playing`, `${id}:ended`]);
     for (const s of statuses) expect(typeof s.at).toBe('number');
+  });
+
+  it('end to end with ./phone: the mic stays quiet while the hook plays a line, and barging in stops it', async () => {
+    const stopped: string[] = [];
+    const player: SayPlayer = (line, ctl) => {
+      ctl.playing();
+      return () => stopped.push(line.id);
+    };
+    const tv = mount({ url, reconnect: false, player });
+    const code = await until(() => tv.seen.current.code);
+    const p = phone(code);
+    await act(async () => void (await p.connect()));
+    const mic = createPhoneMic({ client: p, mode: 'continuous', recognizer: () => new ScriptedRecognizer(), secureContext: true, echoGuard: { bargeIn: true } });
+    cleanups.push(() => mic.dispose());
+    mic.start();
+    const rec = ScriptedRecognizer.last;
+    hub.say(hub.rooms.get(code)!, { id: 'long_1', text: 'Here is everything I know about interval training' });
+    await until(() => tv.seen.current.saying?.state === 'playing' && mic.guarded);
+    rec.final('everything I know about interval training'); // the TV, heard by the phone: dropped
+    rec.hear('hold on');
+    await until(() => stopped.length === 1);
+    expect(stopped).toEqual(['long_1']);
+    expect(tv.seen.current.saying).toBeNull();
+    rec.final('hold on what about rest days');
+    await until(() => tv.seen.current.final?.text === 'hold on what about rest days');
+    await until(() => statuses.some((s) => s.state === 'interrupted'));
+    expect(statuses.map((s) => `${s.id}:${s.state}`)).toEqual(['long_1:loading', 'long_1:playing', 'long_1:interrupted']);
+    expect(statuses[1]!.text).toBe('Here is everything I know about interval training');
   });
 
   it('callbacks come from the latest render: swapping onIntent neither reconnects nor calls the old one', async () => {

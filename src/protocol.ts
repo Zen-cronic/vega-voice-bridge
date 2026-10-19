@@ -117,11 +117,82 @@ export interface SayPayload {
 }
 
 export type SayState = 'loading' | 'playing' | 'ended' | 'interrupted' | 'error' | 'no-audio';
+export const SAY_STATES: readonly SayState[] = ['loading', 'playing', 'ended', 'interrupted', 'error', 'no-audio'];
 export interface SayStatus {
   id: string;
   state: SayState;
   detail?: string;
   at: number;
+  /** What the line says (optional). Lets a phone's echo guard recognize the TV's words for lines the TV started itself. */
+  text?: string;
+}
+
+/**
+ * Hub -> the room's mics: what the TV is saying, so a phone in the same room can keep its microphone from sending
+ * the TV's own voice back (the echo guard). The hub sends `queued` when it dispatches a say line, then relays each
+ * `screen.say.status` a screen reports. The payload never carries `audioUrl`, which stays with the screens.
+ */
+export const SPEECH_TOPIC = 'screen.speech' as const;
+/** Mic -> hub -> the room's screens: stop the current line and drop the queue (barge-in, or a stop button). */
+export const SAY_STOP_TOPIC = 'screen.say.stop' as const;
+
+export type SpeechState = 'queued' | SayState;
+export interface SpeechNotice {
+  id: string;
+  state: SpeechState;
+  /** Hub clock. */
+  at: number;
+  text?: string;
+  durationMs?: number;
+}
+export interface SayStop {
+  /** The line being interrupted, when the sender knows it. Screens stop the current line either way. */
+  id?: string;
+  reason?: string;
+}
+
+/** True for `screen.say.status` and app-named status topics such as `coach.say.status`. */
+export const isSayStatusTopic = (topic: string): boolean => topic === SAY_STATUS_TOPIC || topic.endsWith('.say.status');
+
+const optStr = (v: unknown, max: number): string | undefined => (typeof v === 'string' ? v.slice(0, max) : undefined);
+
+/** Validate a `screen.say.status` payload from the wire. A missing or invalid `at` becomes `fallbackAt`. */
+export function parseSayStatus(p: unknown, fallbackAt = NaN): SayStatus | null {
+  if (!p || typeof p !== 'object') return null;
+  const o = p as Record<string, unknown>;
+  if (typeof o.id !== 'string' || !o.id || o.id.length > FIELD_LIMITS.utteranceId) return null;
+  if (!SAY_STATES.includes(o.state as SayState)) return null;
+  const out: SayStatus = { id: o.id, state: o.state as SayState, at: typeof o.at === 'number' && Number.isFinite(o.at) ? o.at : fallbackAt };
+  const detail = optStr(o.detail, FIELD_LIMITS.detail);
+  const text = optStr(o.text, FIELD_LIMITS.text);
+  if (detail !== undefined) out.detail = detail;
+  if (text !== undefined) out.text = text;
+  return out;
+}
+
+/** Validate a `screen.speech` payload from the wire. */
+export function parseSpeech(p: unknown): SpeechNotice | null {
+  if (!p || typeof p !== 'object') return null;
+  const o = p as Record<string, unknown>;
+  if (typeof o.id !== 'string' || !o.id || o.id.length > FIELD_LIMITS.utteranceId) return null;
+  if (o.state !== 'queued' && !SAY_STATES.includes(o.state as SayState)) return null;
+  if (typeof o.at !== 'number' || !Number.isFinite(o.at)) return null;
+  const out: SpeechNotice = { id: o.id, state: o.state as SpeechState, at: o.at };
+  const text = optStr(o.text, FIELD_LIMITS.text);
+  if (text !== undefined) out.text = text;
+  if (typeof o.durationMs === 'number' && Number.isFinite(o.durationMs) && o.durationMs > 0) out.durationMs = o.durationMs;
+  return out;
+}
+
+/** Validate a `screen.say.stop` payload (anything else, including no payload, is a plain stop). */
+export function parseSayStop(p: unknown): SayStop {
+  const o = p && typeof p === 'object' ? (p as Record<string, unknown>) : {};
+  const out: SayStop = {};
+  const id = optStr(o.id, FIELD_LIMITS.utteranceId);
+  const reason = optStr(o.reason, FIELD_LIMITS.topic);
+  if (id) out.id = id;
+  if (reason) out.reason = reason;
+  return out;
 }
 
 /** Validate a `screen.say` payload from the wire (defaults: no audio, 3 s, normal priority). */

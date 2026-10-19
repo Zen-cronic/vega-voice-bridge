@@ -6,36 +6,80 @@
     <title>tv-voice-bridge: phone mic</title>
     <style>
       body { margin: 0; padding: 20px; background: #0b0d11; color: #f4f6f8; font: 18px/1.4 system-ui, sans-serif; }
-      button { font: inherit; font-size: 22px; padding: 18px; width: 100%; border: 0; border-radius: 14px; background: #ffcf33; color: #111; margin: 12px 0; }
-      input { font: inherit; width: 100%; box-sizing: border-box; padding: 12px; border-radius: 10px; border: 2px solid #283140; background: #12161d; color: inherit; }
-      #status, #lat { color: #9aa4b2; }
+      button { font: inherit; font-size: 22px; padding: 18px; width: 100%; border: 0; border-radius: 14px; background: #ffcf33; color: #111; margin: 12px 0; touch-action: none; user-select: none; }
+      button.secondary { background: #283140; color: inherit; font-size: 18px; padding: 12px; }
+      button[aria-pressed='true'] { background: #ff8a33; }
+      input[type='text'] { font: inherit; width: 100%; box-sizing: border-box; padding: 12px; border-radius: 10px; border: 2px solid #283140; background: #12161d; color: inherit; }
+      label { display: block; margin: 8px 0; }
+      #status, #lat, #mic-state { color: #9aa4b2; }
+      #tv { color: #ffcf33; min-height: 1.4em; }
+      #heard { min-height: 1.4em; font-style: italic; }
     </style>
   </head>
   <body>
     <div id="status">connecting…</div>
-    <button id="mic">🎙 Hold the phone up and tap to talk</button>
-    <form id="f"><input id="t" placeholder="…or type what you would say" /></form>
+    <div id="tv"></div>
+    <button id="mic" aria-pressed="false">Hold to talk</button>
+    <label><input type="checkbox" id="free" /> Hands-free (keeps listening; ignores the TV while it talks)</label>
+    <button id="stop" class="secondary">Stop the TV</button>
+    <form id="f"><input id="t" type="text" placeholder="…or type what you would say" /></form>
+    <div id="heard"></div>
+    <div id="mic-state"></div>
     <div id="lat"></div>
     <script type="module">
-      import { BridgeClient, latency } from '/lib/index.js';
+      import { latency, localNow } from '/lib/index.js';
+      import { connectPhone, createPhoneMic } from '/lib/phone.js';
       const $ = (id) => document.getElementById(id);
-      const code = location.pathname.split('/p/')[1];
-      const phone = new BridgeClient({ url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`, role: 'mic', code });
+
+      // The hub URL and the pairing code come from this page's address (/p/<code>).
+      const phone = connectPhone({ onError: (e) => ($('status').textContent = e.message) });
       phone.on('ack', (a) => ($('lat').textContent = `speech end → TV render: ${latency(a.hops).span('speech.end', 'screen.render')} ms`));
-      phone.on('open', () => ($('status').textContent = `paired with ${code}`));
+      phone.on('open', () => ($('status').textContent = `paired with ${phone.code}`));
       phone.on('reconnecting', () => ($('status').textContent = 'reconnecting…'));
       phone.on('repair', () => ($('status').textContent = 'The TV is gone. Scan the code on the TV again.'));
-      phone.connect().catch((e) => ($('status').textContent = String(e.message)));
-      $('f').onsubmit = (e) => { e.preventDefault(); phone.sendFinal($('t').value, { speechEndAt: performance.timeOrigin + performance.now() }); $('t').value = ''; };
-      // Web Speech needs a secure context (https or localhost) and Chrome/Safari
-      const SR = window.SpeechRecognition ?? window.webkitSpeechRecognition;
-      if (!SR) $('mic').disabled = true;
-      $('mic').onclick = () => {
-        const rec = new SR(); rec.interimResults = true; const id = `utt_${Date.now()}`; let end = 0;
-        rec.onspeechend = () => (end = performance.timeOrigin + performance.now());
-        rec.onresult = (e) => { const r = e.results[e.results.length - 1]; r.isFinal ? phone.sendFinal(r[0].transcript, { utteranceId: id, speechEndAt: end || undefined }) : phone.sendPartial(r[0].transcript, id); };
-        rec.start();
+      $('f').onsubmit = (e) => {
+        e.preventDefault();
+        phone.sendFinal($('t').value, { speechEndAt: localNow() });
+        $('t').value = '';
       };
+
+      // The echo guard is on by default: while the TV speaks, what this mic hears is not sent.
+      // bargeIn lets you talk over the TV: it stops, and what you said goes through.
+      let mic = null;
+      function makeMic(mode) {
+        mic?.dispose();
+        mic = createPhoneMic({ client: phone, mode, echoGuard: { bargeIn: true } });
+        mic.on('state', (s) => ($('mic-state').textContent = s === 'guarded' ? 'The TV is talking; not listening to it.' : s));
+        mic.on('guard', (on) => ($('tv').textContent = on ? 'TV is speaking…' : ''));
+        mic.on('partial', (p) => ($('heard').textContent = p.text));
+        mic.on('final', (f) => ($('heard').textContent = `“${f.text}”`));
+        mic.on('bargeIn', () => ($('tv').textContent = 'Stopped the TV.'));
+        mic.on('error', (e) => ($('mic-state').textContent = e.message));
+        if (!mic.supported) $('mic').disabled = true;
+        return mic;
+      }
+      makeMic('push-to-talk');
+
+      const press = (on) => $('mic').setAttribute('aria-pressed', String(on));
+      $('mic').onpointerdown = (e) => {
+        e.preventDefault();
+        if ($('free').checked) return;
+        press(true);
+        mic.start();
+      };
+      $('mic').onpointerup = $('mic').onpointercancel = () => {
+        if ($('free').checked) return;
+        press(false);
+        mic.stop();
+      };
+      $('free').onchange = () => {
+        const free = $('free').checked;
+        makeMic(free ? 'continuous' : 'push-to-talk');
+        $('mic').textContent = free ? 'Listening (hands-free)' : 'Hold to talk';
+        press(free);
+        if (free) mic.start();
+      };
+      $('stop').onclick = () => mic.interrupt();
     </script>
   </body>
 </html>

@@ -35,6 +35,7 @@
       });
 
       // TV -> room speech: one queue. "high" interrupts and clears it; "playing" is reported when sound starts.
+      // Every line ends with a report (dropped ones too): the phone's echo guard listens until it hears one.
       const queue = [];
       let current = null;
       const report = (id, state, detail) => tv.reportSay({ id, state, detail });
@@ -44,6 +45,10 @@
         current = null;
         stop();
         report(id, 'interrupted');
+      }
+      function stopAll() {
+        for (const line of queue.splice(0)) report(line.id, 'interrupted');
+        stopCurrent();
       }
       function playNext() {
         if (current || !queue.length) return;
@@ -78,13 +83,11 @@
         }
       }
       tv.onSay((line) => {
-        if (line.priority === 'high') {
-          queue.length = 0;
-          stopCurrent();
-        }
+        if (line.priority === 'high') stopAll();
         queue.push(line);
         playNext();
       });
+      tv.onSayStop(stopAll); // a phone talked over the TV (barge-in) or pressed stop
       tv.connect().catch(() => undefined); // keeps retrying in the background
     </script>
   </body>

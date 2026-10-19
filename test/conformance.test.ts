@@ -12,11 +12,18 @@ import {
   CODE_ALPHABET,
   PROTOCOL_VERSION,
   SAY_STATUS_TOPIC,
+  SAY_STOP_TOPIC,
   SAY_TOPIC,
+  SPEECH_TOPIC,
   decode,
   encode,
+  isSayStatusTopic,
   parseSay,
+  parseSayStatus,
+  parseSayStop,
+  parseSpeech,
   resolveSayAudio,
+  type AppMsg,
   type BridgeMessage,
   type SayPayload,
 } from '../src/index.js';
@@ -98,6 +105,8 @@ describe('wire format', () => {
     ['intent', { type: 'intent', utteranceId: 'u1', name: 'log_set', ok: true, payload: {}, hops: [] }],
     ['ack', { type: 'ack', utteranceId: 'u1', stage: 'rendered', hops: [] }],
     ['app', { type: 'app', topic: SAY_TOPIC, payload: { id: 's1', text: 'Logged.' } }],
+    ['app (screen.speech)', { type: 'app', topic: SPEECH_TOPIC, payload: { id: 's1', state: 'queued', at: 5, text: 'Logged.', durationMs: 900 } }],
+    ['app (screen.say.stop)', { type: 'app', topic: SAY_STOP_TOPIC, payload: { id: 's1', reason: 'barge-in' }, from: 'mic_1' }],
   ];
   it.each(vectors)('%s round-trips through encode/decode unchanged', (_n, m) => {
     expect(decode(encode(m))).toEqual(m);
@@ -134,6 +143,7 @@ describe('wire format', () => {
     expect(PROTOCOL_VERSION).toBe(1);
     expect(CODE_ALPHABET).toBe('ABCDEFGHJKMNPQRSTUVWXYZ23456789');
     expect([SAY_TOPIC, SAY_STATUS_TOPIC]).toEqual(['screen.say', 'screen.say.status']);
+    expect([SPEECH_TOPIC, SAY_STOP_TOPIC]).toEqual(['screen.speech', 'screen.say.stop']);
   });
 });
 
@@ -218,6 +228,19 @@ describe('routing rules', () => {
     const hops = (await ack).hops;
     expect(hops.map((h) => h.hop)).toEqual(['speech.end', 'mic.send', 'hub.recv', 'hub.intent', 'screen.recv', 'screen.render', 'hub.ack']);
     for (let i = 1; i < hops.length; i++) expect(hops[i]!.at).toBeGreaterThanOrEqual(hops[i - 1]!.at - 5);
+  });
+  it('a final may lead with speech.start (revision 3): speech.start -> speech.end -> mic.send -> ...', async () => {
+    const tv = client({ url, role: 'screen' });
+    const { code } = await tv.connect();
+    tv.on('intent', (m) => tv.ack(m));
+    const phone = client({ url, role: 'mic', code });
+    await phone.connect();
+    const ack = new Promise<{ hops: Array<{ hop: string; at: number }> }>((r) => phone.on('ack', r));
+    const t = performance.timeOrigin + performance.now();
+    phone.sendFinal('x', { speechStartAt: t - 900, speechEndAt: t - 100 });
+    const hops = (await ack).hops;
+    expect(hops.map((h) => h.hop)).toEqual(['speech.start', 'speech.end', 'mic.send', 'hub.recv', 'hub.intent', 'screen.render', 'hub.ack']);
+    expect(Math.round(hops[1]!.at - hops[0]!.at)).toBe(800);
   });
   it('untracked app messages reach the app handler and produce no intent', async () => {
     const tv = client({ url, role: 'screen' });
@@ -311,7 +334,7 @@ describe('screen.say: TV -> room speech (two-way)', () => {
     tv.onSay((l) => heard.push(l));
     tv2.onSay((l) => heard.push(l));
     let micGot = 0;
-    phone.on('app', () => micGot++);
+    phone.on('app', (m) => void (m.topic === SAY_TOPIC && micGot++)); // mics get a notice instead (see the echo guard relays)
     const sent = hub.say(hub.rooms.get(code)!, { id: 'say_1', text: 'Logged. Rest two minutes.', audioUrl: 'https://cdn.example/say_1.mp3', durationMs: 2100 });
     await new Promise((r) => setTimeout(r, 60));
     expect(sent.priority).toBe('normal');
@@ -350,5 +373,118 @@ describe('screen.say: TV -> room speech (two-way)', () => {
     expect(resolveSayAudio('', 'http://x')).toBe('');
     expect(resolveSayAudio('//cdn.example/a.mp3', 'https://hub.example')).toBe('https://cdn.example/a.mp3');
     expect(resolveSayAudio('//cdn.example/a.mp3', 'http://192.168.1.20:8792')).toBe('http://cdn.example/a.mp3');
+  });
+});
+
+describe('echo guard relays (revision 3): screen.speech to mics, screen.say.stop to screens', () => {
+  /** Collect app frames by topic for a client. */
+  const appLog = (c: BridgeClient) => {
+    const got: AppMsg[] = [];
+    c.on('app', (m) => void got.push(m));
+    return got;
+  };
+  async function room() {
+    const tv = client({ url, role: 'screen' });
+    const { code } = await tv.connect();
+    const phone = client({ url, role: 'mic', code });
+    const partner = client({ url, role: 'mic', code });
+    await phone.connect();
+    await partner.connect();
+    return { tv, phone, partner, code };
+  }
+  const settle = () => new Promise((r) => setTimeout(r, 60));
+
+  it('hub.say also sends each mic a queued notice, with the text and duration but never the audio URL', async () => {
+    const { tv, phone, partner, code } = await room();
+    const [tvGot, phoneGot, partnerGot] = [appLog(tv), appLog(phone), appLog(partner)];
+    hub.say(hub.rooms.get(code)!, { id: 'say_9', text: 'Rest two minutes.', audioUrl: 'https://cdn.example/a.mp3?sig=secret', durationMs: 1800 });
+    await settle();
+    for (const got of [phoneGot, partnerGot]) {
+      expect(got).toHaveLength(1);
+      expect(got[0]!.topic).toBe(SPEECH_TOPIC);
+      expect(got[0]!.payload).toEqual({ id: 'say_9', state: 'queued', at: expect.any(Number), text: 'Rest two minutes.', durationMs: 1800 });
+      expect(JSON.stringify(got[0])).not.toContain('sig=secret');
+    }
+    expect(tvGot.map((m) => m.topic)).toEqual([SAY_TOPIC]);
+  });
+
+  it("a screen's playback report reaches the mics as a notice; invalid reports and mic-sent reports are not relayed", async () => {
+    const { tv, phone, code } = await room();
+    const got = appLog(phone);
+    tv.reportSay({ id: 'say_9', state: 'playing', text: 'Rest two minutes.' });
+    tv.sendApp(SAY_STATUS_TOPIC, { id: 'say_9', state: 'exploded' });
+    tv.sendApp('coach.say.status', { id: 'c1', state: 'ended', at: 42 });
+    phone.sendApp(SAY_STATUS_TOPIC, { id: 'fake', state: 'ended', at: 1 });
+    await settle();
+    expect(got.map((m) => m.payload)).toEqual([
+      { id: 'say_9', state: 'playing', at: expect.any(Number), text: 'Rest two minutes.' },
+      { id: 'c1', state: 'ended', at: 42 },
+    ]);
+    expect(appSeen.map((a) => a.topic)).toEqual([SAY_STATUS_TOPIC, SAY_STATUS_TOPIC, 'coach.say.status', SAY_STATUS_TOPIC]); // onApp still sees all four
+    expect(code).toBeTruthy();
+  });
+
+  it("a mic's screen.say.stop reaches the room's screens (from = the mic), not the other mics; a screen's is not relayed", async () => {
+    const { tv, phone, partner } = await room();
+    const [tvGot, partnerGot] = [appLog(tv), appLog(partner)];
+    const stops: unknown[] = [];
+    tv.onSayStop((s) => stops.push(s));
+    phone.stopSay({ id: 'say_9', reason: 'barge-in' });
+    tv.sendApp(SAY_STOP_TOPIC, {});
+    await settle();
+    expect(stops).toEqual([{ id: 'say_9', reason: 'barge-in', from: phone.clientId }]);
+    expect(tvGot).toHaveLength(1);
+    expect(partnerGot).toHaveLength(0);
+    expect(appSeen.filter((a) => a.topic === SAY_STOP_TOPIC).map((a) => a.role)).toEqual(['mic', 'screen']);
+  });
+
+  it('hub.stopSay sends a stop to the screens; a raw mic sees notices on the wire as plain app frames', async () => {
+    const tv = client({ url, role: 'screen' });
+    const { code } = await tv.connect();
+    const stops: unknown[] = [];
+    tv.onSayStop((s) => stops.push(s));
+    const mic = await raw();
+    mic.send({ type: 'hello', v: 1, role: 'mic', clientId: 'mic_raw', code });
+    expect(await mic.next('welcome')).toMatchObject({ code });
+    hub.say(hub.rooms.get(code)!, { id: 'r1', text: 'Hi.' });
+    expect(await mic.next('app')).toEqual({ type: 'app', topic: SPEECH_TOPIC, payload: { id: 'r1', state: 'queued', at: expect.any(Number), text: 'Hi.' } });
+    hub.stopSay(hub.rooms.get(code)!, { reason: 'app' });
+    await settle();
+    expect(stops).toEqual([{ reason: 'app' }]);
+  });
+
+  it('speechNotices: false turns the notices off', async () => {
+    const srv = createServer();
+    const quiet = new BridgeHub({ server: srv, speechNotices: false });
+    await new Promise<void>((r) => srv.listen(0, '127.0.0.1', r));
+    const addr = srv.address();
+    const u = `ws://127.0.0.1:${typeof addr === 'object' && addr ? addr.port : 0}/ws`;
+    try {
+      const tv = client({ url: u, role: 'screen' });
+      const { code } = await tv.connect();
+      const phone = client({ url: u, role: 'mic', code });
+      await phone.connect();
+      const got = appLog(phone);
+      quiet.say(quiet.rooms.get(code)!, { id: 'q', text: 'quiet' });
+      tv.reportSay({ id: 'q', state: 'playing' });
+      await settle();
+      expect(got).toHaveLength(0);
+    } finally {
+      for (const c of clients.splice(0)) c.close();
+      quiet.close();
+      await new Promise((r) => srv.close(r));
+    }
+  });
+
+  it('payload validation: parseSpeech, parseSayStatus, parseSayStop, isSayStatusTopic', () => {
+    expect(parseSpeech({ id: 'a', state: 'queued', at: 1, text: 'x', durationMs: 5 })).toEqual({ id: 'a', state: 'queued', at: 1, text: 'x', durationMs: 5 });
+    expect(parseSpeech({ id: 'a', state: 'playing', at: 1, durationMs: -1, audioUrl: 'https://x' })).toEqual({ id: 'a', state: 'playing', at: 1 });
+    for (const bad of [null, 'x', { id: '', state: 'queued', at: 1 }, { id: 'a', state: 'nope', at: 1 }, { id: 'a', state: 'ended' }]) expect(parseSpeech(bad)).toBeNull();
+    expect(parseSayStatus({ id: 'a', state: 'ended', at: 3, detail: 'ok' })).toEqual({ id: 'a', state: 'ended', at: 3, detail: 'ok' });
+    expect(parseSayStatus({ id: 'a', state: 'ended' }, 99)).toEqual({ id: 'a', state: 'ended', at: 99 });
+    expect(parseSayStatus({ id: 'a', state: 'queued', at: 1 })).toBeNull(); // queued is the hub's word, not a playback state
+    expect(parseSayStop(undefined)).toEqual({});
+    expect(parseSayStop({ id: 7, reason: 'barge-in', extra: 1 })).toEqual({ reason: 'barge-in' });
+    expect([SAY_STATUS_TOPIC, 'coach.say.status', 'screen.say', 'status'].map(isSayStatusTopic)).toEqual([true, true, false, false]);
   });
 });

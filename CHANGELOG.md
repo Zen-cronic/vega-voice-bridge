@@ -11,6 +11,20 @@ The wire protocol is still **v1**. Everything below is additive.
   - `<PairingQr value size? />` draws a QR code from `View`s, one per horizontal run of dark modules, with a quiet zone, whole-number cells and a `testID`.
   - `test/react.test.ts` runs the hook against a real in-process hub and checks that PairingQr's views reproduce (and decode back to) the encoded matrix.
 - `localNow()`: local epoch milliseconds from the monotonic clock, the time base of `speechEndAt` and `receivedAt`.
+- **`./phone`:** the voice half, for a phone browser page.
+  - `connectPhone()` joins as the room's mic, taking the hub URL and the code from the page's address unless given. `codeFromPath('/p/k7qf')` gives `K7QF`.
+  - `createPhoneMic({client, mode, lang, recognizer})` wraps Web Speech (`SpeechRecognition` or `webkitSpeechRecognition`; injectable). Interim results become throttled `transcript.partial`s. Finals become `transcript.final`s with `speech.start` and `speech.end` hops. Continuous mode restarts sessions the browser ends (iOS Safari ends them often), and push-to-talk is `start()` / `stop()`. Errors are typed: `no-support`, `insecure-context` (not https), `permission-denied`, `no-microphone`, `network`, `no-speech`.
+  - **The echo guard**, on by default. While the TV is saying something (from `queued` until `ended`, `interrupted` or `error`, plus a 700 ms tail), what the mic hears is dropped, or the recognizer is paused (`mode: 'pause'`). A final that repeats the TV's last words just after a line is dropped too. With `bargeIn: true`, a user who talks over the TV stops it, and what they said is kept. `interrupt()` is a stop button.
+- **Protocol v1 revision 3** (additive; see [PROTOCOL.md](PROTOCOL.md#101-the-echo-guard-screenspeech-and-screensaystop-revision-3)):
+  - the hub tells the room's mics what the TV is saying on the new `app` topic `screen.speech`: `queued` on `hub.say()`, then each playback report a screen sends. The notices never carry the audio URL. `speechNotices: false` turns them off;
+  - a mic's `screen.say.stop` is relayed to the room's screens, and `hub.stopSay(room)` sends one from the app;
+  - `screen.say.status` payloads may carry `text`, and finals may lead with a `speech.start` hop.
+- Client: `onSpeech()` and `stopSay()` for mics, `onSayStop()` for screens, and `sendFinal({speechStartAt})`. The React hook honours `screen.say.stop` (`interruptible`, default true) and reports each line's `text`.
+- Examples: the phone page uses `./phone` (hold to talk, hands-free, a stop button, barge-in on). The web TV honours `screen.say.stop` and reports every line it drops as `interrupted`.
+
+### Changed
+- Mics now receive `app` frames from the hub (`screen.speech`). Mic code that handles every `app` message without checking `topic` will see them.
+- In the conformance suite, "hub.say reaches no mic" now means no `screen.say` frame reaches a mic. Mics get a `screen.speech` notice instead.
 
 ## 0.2.0 (2026-10-18)
 

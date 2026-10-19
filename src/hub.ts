@@ -4,12 +4,17 @@ import { WebSocketServer, type RawData, type WebSocket } from 'ws';
 import {
   CLIENT_SENDS,
   PROTOCOL_VERSION,
+  SAY_STOP_TOPIC,
   SAY_TOPIC,
+  SPEECH_TOPIC,
   decodeMessage,
   encode,
   isPairingCode,
+  isSayStatusTopic,
   makePairingCode,
   normalizeCode,
+  parseSayStatus,
+  parseSayStop,
   secureRandom,
   type AckMsg,
   type AppMsg,
@@ -23,6 +28,8 @@ import {
   type PeerInfo,
   type Role,
   type SayPayload,
+  type SayStop,
+  type SpeechNotice,
 } from './protocol.js';
 
 export interface Peer extends PeerInfo {
@@ -99,6 +106,11 @@ export interface HubOptions {
   rateKey?: (req: IncomingMessage) => string;
   /** Random source for pairing codes (tests). Default: the platform CSPRNG. */
   random?: () => number;
+  /**
+   * Tell the room's mics what the TV is saying (`screen.speech`): `queued` on `say()`, then each `screen.say.status`
+   * a screen reports. Phones use it to keep the TV's voice out of the microphone. Default true.
+   */
+  speechNotices?: boolean;
 }
 
 /** Counters for observability (and tests). */
@@ -142,10 +154,15 @@ function rawToString(data: RawData): string {
   return Buffer.from(data).toString('utf8');
 }
 
-/** Under backpressure, frames the next one supersedes can be dropped; utterance results and speech lines cannot. */
+/**
+ * Under backpressure, frames the next one supersedes can be dropped. Utterance results, speech lines, speech notices
+ * (the phone's echo guard depends on them) and stops cannot.
+ */
 function droppable(msg: BridgeMessage): boolean {
   if (msg.type === 'transcript.partial') return true;
-  return msg.type === 'app' && !msg.utteranceId && msg.topic !== SAY_TOPIC && !msg.topic.endsWith('.say');
+  if (msg.type !== 'app' || msg.utteranceId) return false;
+  const t = msg.topic;
+  return t !== SAY_TOPIC && !t.endsWith('.say') && t !== SPEECH_TOPIC && t !== SAY_STOP_TOPIC;
 }
 
 class FixedWindow {
@@ -398,7 +415,22 @@ export class BridgeHub {
   say(room: Room, line: SayPayload, opts: { topic?: string } = {}): SayPayload {
     const payload: SayPayload = { priority: 'normal', ...line };
     this.broadcast(room, { type: 'app', topic: opts.topic ?? SAY_TOPIC, payload }, ['screen']);
+    const notice: SpeechNotice = { id: String(payload.id), state: 'queued', at: this.now() };
+    if (typeof payload.text === 'string') notice.text = payload.text;
+    if (typeof payload.durationMs === 'number' && Number.isFinite(payload.durationMs) && payload.durationMs > 0) notice.durationMs = payload.durationMs;
+    this.speech(room, notice);
     return payload;
+  }
+
+  /** Ask the room's screens to stop the current line and drop their queues (`screen.say.stop`). */
+  stopSay(room: Room, stop: SayStop = {}) {
+    this.broadcast(room, { type: 'app', topic: SAY_STOP_TOPIC, payload: parseSayStop(stop) }, ['screen']);
+  }
+
+  /** Tell the room's mics what the TV is saying (unless `speechNotices` is off). */
+  private speech(room: Room, notice: SpeechNotice) {
+    if (this.opts.speechNotices === false) return;
+    this.broadcast(room, { type: 'app', topic: SPEECH_TOPIC, payload: notice }, ['mic']);
   }
 
   peersOf(room: Room): PeerInfo[] {
@@ -488,6 +520,7 @@ export class BridgeHub {
       case 'app': {
         const base: AppMsg = { type: 'app', topic: msg.topic, payload: msg.payload, from: me.clientId };
         if (!msg.utteranceId) {
+          this.relaySpeech(room, me, msg);
           await this.call('onApp', () => this.opts.onApp?.(room, base, from));
           return;
         }
@@ -505,6 +538,22 @@ export class BridgeHub {
       }
       default:
         return;
+    }
+  }
+
+  /**
+   * The two relays behind the phone's echo guard: a screen's playback report goes to the room's mics as
+   * `screen.speech`, and a mic's `screen.say.stop` goes to the room's screens. Both are rebuilt from validated fields.
+   */
+  private relaySpeech(room: Room, me: Peer, msg: AppMsg) {
+    if (me.role === 'screen' && isSayStatusTopic(msg.topic)) {
+      const status = parseSayStatus(msg.payload, this.now());
+      if (!status) return;
+      const notice: SpeechNotice = { id: status.id, state: status.state, at: status.at };
+      if (status.text !== undefined) notice.text = status.text;
+      this.speech(room, notice);
+    } else if (me.role === 'mic' && msg.topic === SAY_STOP_TOPIC) {
+      this.broadcast(room, { type: 'app', topic: SAY_STOP_TOPIC, payload: parseSayStop(msg.payload), from: me.clientId }, ['screen']);
     }
   }
 

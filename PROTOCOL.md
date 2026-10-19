@@ -7,13 +7,13 @@ This is the wire contract between a **hub** and its clients: **screens** (TV app
 3. The TV renders the result and confirms the render.
 4. The TV speaks a reply and confirms playback.
 
-**Status:** protocol version `1`, revision 2. Package 0.2.0 implements revision 2, and package 0.1.0 implemented revision 1. The two revisions interoperate in both directions (see [Revision history](#revision-history)).
+**Status:** protocol version `1`, revision 3. Package 0.3.0 implements revision 3, 0.2.0 implemented revision 2, and 0.1.0 revision 1. All three revisions interoperate in both directions (see [Revision history](#revision-history)).
 
 **Reference tests.** A second implementation (another language or another TV platform) is conformant when it passes the following:
 
 | File | What it pins down | Required of |
 |---|---|---|
-| [`test/conformance.test.ts`](test/conformance.test.ts) | Wire vectors for every message type, field validation, black-box hub behaviour over raw sockets (refusals, pairing, identity, role rules), routing, hop order, `screen.say` | hubs and clients |
+| [`test/conformance.test.ts`](test/conformance.test.ts) | Wire vectors for every message type, field validation, black-box hub behaviour over raw sockets (refusals, pairing, identity, role rules), routing, hop order, `screen.say`, and the echo guard relays (`screen.speech`, `screen.say.stop`) | hubs and clients |
 | [`test/robustness.test.ts`](test/robustness.test.ts) | The hub survives malformed frames, bad upgrades and throwing handlers; room lifetime; pairing, rate and size limits; heartbeat; backpressure | hubs |
 | [`test/client.test.ts`](test/client.test.ts) | Reconnect with backoff, recovery after a hub restart, re-pair, heartbeat on links that never report closing, split-frame reassembly | clients |
 
@@ -68,7 +68,9 @@ Limits are maximum lengths in characters, or entries for arrays (`FIELD_LIMITS` 
 | `transcript.final` | the room's screens, stamped `hub.recv`, then the app's `onFinal` |
 | `intent` (from the app's result) | everyone in the room, stamped `hub.intent` |
 | `ack` | the room's mics, stamped `hub.ack` |
-| `app` without `utteranceId` | the app's `onApp` only; nothing is broadcast |
+| `app` without `utteranceId` | the app's `onApp` only; nothing is broadcast, except the two relays below |
+| `app` `screen.say.status` (or `*.say.status`) from a screen | also the room's mics, rebuilt as `screen.speech` (section 10.1) |
+| `app` `screen.say.stop` from a mic | also the room's screens, with `from` set to the mic (section 10.1) |
 | `app` with `utteranceId` | stamped `hub.recv`; the app's `onApp` may return an intent, which is fanned out like an utterance's |
 | `peers` | everyone in the room, on every join and leave |
 | `error handler-failed` | everyone in the room, with the `utteranceId` |
@@ -135,7 +137,7 @@ The hub rebuilds every relayed message from validated fields. Unknown fields are
 
   `speech.end → mic.send → hub.recv → hub.intent → screen.recv → screen.render → hub.ack`
 
-  Taps use `input.end` instead of `speech.end`.
+  Taps use `input.end` instead of `speech.end`. A mic MAY lead with `speech.start` (when the user started talking), so `speech.start → speech.end` is how long they spoke.
 - The hub keeps at most 32 inbound hops before stamping its own.
 
 ## 10. `screen.say`: the TV talks back
@@ -143,12 +145,25 @@ The hub rebuilds every relayed message from validated fields. Unknown fields are
 - The hub sends `app` on topic `screen.say` to the room's **screens only**. The payload is `{id, text, audioUrl?, durationMs?, priority?: "normal"|"high"}`. Apps MAY use their own topic name (for example `coach.say`) with the same payload.
 - The screen plays `audioUrl` if it can. Otherwise it speaks `text` with a local TTS, or shows `text` as a caption for `durationMs` (default 3000).
 - `high` interrupts the current line and clears the queue. `normal` queues.
-- A screen MAY report playback as `app` on `screen.say.status`, with payload `{id, state, detail?, at}`. The states are `loading`, `playing`, `ended`, `interrupted`, `error` and `no-audio`, and `at` is in hub clock. The report SHOULD say `playing` only when sound has actually started.
+- A screen MAY report playback as `app` on `screen.say.status`, with payload `{id, state, detail?, at, text?}`. The states are `loading`, `playing`, `ended`, `interrupted`, `error` and `no-audio`, and `at` is in hub clock. The report SHOULD say `playing` only when sound has actually started. `text` (what the line says) is optional; include it for lines the screen starts itself, so a phone can recognize the TV's words.
+
+### 10.1 The echo guard: `screen.speech` and `screen.say.stop` (revision 3)
+
+The phone's microphone and the TV's speaker are in the same room, so a phone that keeps listening hears the TV. Two relays let it tell the TV's voice from the user's. Both are new `app` topics, so they are additive within v1.
+
+- **`screen.speech` (hub → the room's mics).** Payload `{id, state, at, text?, durationMs?}`, where `state` is `queued` or one of the playback states above, and `at` is hub clock.
+  - When the app sends a say line (`hub.say`), the hub sends each mic `queued` with the line's `text` and `durationMs`.
+  - When a screen reports on `screen.say.status` (or an app-named `*.say.status`), the hub validates the payload and sends each mic the same `id`, `state`, `at` and `text`. A report that fails validation is not relayed. Reports from mics are not relayed.
+  - The payload never carries `audioUrl`: say audio URLs are bearer links and stay with the screens.
+  - A hub MAY turn the notices off (reference: `speechNotices: false`).
+- **`screen.say.stop` (mic → hub → the room's screens).** Payload `{id?, reason?}`, for example `{id: "say_9", reason: "barge-in"}`. The hub rebuilds it from those two fields, sets `from` to the mic's clientId, and sends it to the room's screens (not to other mics). A screen that honours it SHOULD stop the current line, drop its queue and report each affected line `interrupted`. The app can send the same stop itself (reference: `hub.stopSay(room)`). A stop that a screen sends is not relayed.
+- **What a mic does with them (reference: `createPhoneMic` in `./phone`).** From `queued` until `ended`, `interrupted` or `error` plus a short tail, it drops what it hears. `no-audio` releases at once, because nothing is audible. Each hold is capped, so a screen that never reports cannot silence the phone for long. With barge-in on, speech during a line that is not mostly the line's own words sends `screen.say.stop` and is kept.
+- Mics MUST ignore `app` topics they do not know (section 1). Revision 3 is the first in which mics receive `app` frames from the hub.
 
 ## 11. Backpressure and message rate
 
 - **Per socket:** the hub accepts a sustained rate of messages (default 100/s, bursts of 200). Excess messages are dropped, with at most one `rate-limited` error per second.
-- **Per peer:** above a buffered-bytes threshold (default 1 MiB), the hub drops frames that the next one supersedes: `transcript.partial`, and untracked `app` frames other than say topics. Intents, acks, errors and say lines are always sent. Above a hard cap (default 8 MiB), the peer is disconnected; it reconnects and gets fresh state.
+- **Per peer:** above a buffered-bytes threshold (default 1 MiB), the hub drops frames that the next one supersedes: `transcript.partial`, and untracked `app` frames other than say topics, `screen.speech` and `screen.say.stop`. Intents, acks, errors, say lines, speech notices and stops are always sent. Above a hard cap (default 8 MiB), the peer is disconnected; it reconnects and gets fresh state.
 
 ## 12. Versioning rules
 
@@ -169,6 +184,18 @@ The hub rebuilds every relayed message from validated fields. Unknown fields are
 - The package version is separate from the protocol version. A package minor bump (0.x) may tighten behaviour within the same protocol version, and the CHANGELOG says how.
 
 ## Revision history
+
+### v1 revision 3 (package 0.3.0)
+
+**Added (optional, additive):**
+- the `app` topics `screen.speech` (hub → mics) and `screen.say.stop` (mic → hub → screens), section 10.1;
+- the optional `text` field in a `screen.say.status` payload;
+- the optional `speech.start` hop (section 9).
+
+**Interop:**
+- A revision-2 mic on a revision-3 hub receives `screen.speech` frames as `app` messages on a topic it does not know. The 0.2 client hands them to `app` handlers, which ignore topics they do not handle. Everything else is unchanged.
+- A revision-3 mic on a revision-2 hub never receives `screen.speech`, so its echo guard never engages and it behaves like a revision-2 mic. Its `screen.say.stop` reaches only the app's `onApp`.
+- A revision-2 screen ignores `screen.say.stop`. It still reports playback, so phones still guard against it.
 
 ### v1 revision 2 (package 0.2.0, 2026-10-18)
 
