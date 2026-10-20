@@ -17,7 +17,9 @@ import {Text, View} from 'react-native';
 import {PairingQr, useVoiceBridge} from 'tv-voice-bridge/react';
 import {createVegaSayPlayer} from 'tv-voice-bridge/vega';
 
-const HUB = '127.0.0.1:8800';
+// The voice-loop hub (node examples/vega-voice-loop/hub.mjs): it serves the fragmented MP4 clips the player needs.
+// The web-TV examples on 8800 send text only, so the TV would show captions and report "no audioUrl".
+const HUB = '127.0.0.1:8790';
 
 export function App() {
   const player = useMemo(() => createVegaSayPlayer({baseUrl: `http://${HUB}`}), []);
