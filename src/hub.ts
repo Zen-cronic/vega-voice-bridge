@@ -4,6 +4,7 @@ import type { Duplex } from 'node:stream';
 import { WebSocketServer, type RawData, type WebSocket } from 'ws';
 import {
   CLIENT_SENDS,
+  FIELD_LIMITS,
   PROTOCOL_VERSION,
   SAY_STOP_TOPIC,
   SAY_TOPIC,
@@ -120,6 +121,13 @@ export interface HubOptions {
    * copying the credential into its response, where proxies and tunnel inspectors record headers.
    */
   protocols?: string[];
+  /**
+   * Send the handler's own error text to the room in `handler-failed`, capped at the protocol's error-message limit.
+   * Default false: the room gets the generic "handler failed", and the text goes only to `log` (`handler-failed`,
+   * with the room code and utteranceId). Exception text can carry prompts, keys, stack details or another user's
+   * words, and every peer in the room sees an error, so turn this on only while developing.
+   */
+  exposeHandlerErrors?: boolean;
 }
 
 /** Counters for observability (and tests). */
@@ -147,6 +155,18 @@ interface Conn {
 
 const MAX_INBOUND_HOPS = 32;
 const mono = () => performance.now();
+
+/** What `handler-failed` says to the room unless `exposeHandlerErrors` is on. */
+export const HANDLER_FAILED_MESSAGE = 'handler failed';
+
+/** `text` cut to at most `max` characters (an ellipsis marks the cut), never splitting a surrogate pair. */
+function capText(text: string, max: number): string {
+  if (text.length <= max) return text;
+  let cut = text.slice(0, Math.max(0, max - 1));
+  const last = cut.charCodeAt(cut.length - 1);
+  if (last >= 0xd800 && last <= 0xdbff) cut = cut.slice(0, -1);
+  return `${cut}…`;
+}
 
 /** Message text of anything thrown, without ever throwing itself. */
 export function errorText(err: unknown): string {
@@ -410,9 +430,9 @@ export class BridgeHub {
     }
   }
 
-  private handlerError(label: string, err: unknown) {
+  private handlerError(label: string, err: unknown, where: { code?: string; utteranceId?: string } = {}) {
     this.stats.handlerErrors++;
-    this.log('handler-failed', { handler: label, error: errorText(err) });
+    this.log('handler-failed', { handler: label, error: errorText(err), ...where });
   }
 
   /** Create a room (or return the live one with that code). Throws only when the hub is full; the hub itself never calls this form. */
@@ -519,7 +539,7 @@ export class BridgeHub {
   private error(socket: WebSocket, code: ErrorCode, message: string, extra: { utteranceId?: string; retryAfterMs?: number } = {}) {
     if (code === 'bad-message') this.stats.badMessages++;
     if (code === 'rate-limited') this.stats.rateLimited++;
-    this.send(socket, { type: 'error', code, message, ...extra });
+    this.send(socket, { type: 'error', code, message: capText(message, FIELD_LIMITS.errorMessage), ...extra });
   }
 
   broadcast(room: Room, msg: BridgeMessage, roles?: Role[]) {
@@ -806,8 +826,9 @@ export class BridgeHub {
       const intent: IntentMsg = { type: 'intent', utteranceId, name: String(res.name), ok: res.ok === true, payload: res.payload, from: from.clientId, hops: this.stamp(hops, 'hub.intent') };
       this.broadcast(room, intent);
     } catch (err) {
-      const message = errorText(err);
-      this.handlerError('dispatch', err);
+      // The room learns that this utterance failed, not why: exception text stays in the hub's log.
+      this.handlerError('dispatch', err, { code: room.code, utteranceId });
+      const message = this.opts.exposeHandlerErrors ? capText(errorText(err), FIELD_LIMITS.errorMessage) || HANDLER_FAILED_MESSAGE : HANDLER_FAILED_MESSAGE;
       this.broadcast(room, { type: 'error', code: 'handler-failed', message, utteranceId });
     }
   }

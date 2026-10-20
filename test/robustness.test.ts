@@ -8,7 +8,7 @@ import net, { type Socket } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
 import { BridgeHub, type HubOptions } from '../src/hub.js';
-import type { BridgeMessage } from '../src/index.js';
+import { BridgeClient, FIELD_LIMITS, decode, type BridgeMessage } from '../src/index.js';
 
 type Raw = { ws: WebSocket; send: (m: unknown) => void; next: (type?: string) => Promise<BridgeMessage>; closed: Promise<number>; inbox: BridgeMessage[] };
 const cleanups: Array<() => unknown> = [];
@@ -137,7 +137,7 @@ describe('crash regressions: each input below killed the 0.1.0 hub process', () 
     await alive(url);
   });
 
-  it('H5: app callbacks that throw (or reject with a non-Error) never escape; handler-failed carries "null"', async () => {
+  it('H5: app callbacks that throw (or reject with a non-Error) never escape; the room gets handler-failed', async () => {
     const boom = () => {
       throw new Error('app bug');
     };
@@ -158,7 +158,7 @@ describe('crash regressions: each input below killed the 0.1.0 hub process', () 
     expect(m.first).toMatchObject({ type: 'welcome' });
     tv.send({ type: 'app', topic: 'untracked', payload: 1 });
     m.send({ type: 'transcript.final', utteranceId: 'u1', text: 'hi', hops: [] });
-    expect(await tv.next('error')).toMatchObject({ code: 'handler-failed', utteranceId: 'u1', message: 'null' });
+    expect(await tv.next('error')).toMatchObject({ code: 'handler-failed', utteranceId: 'u1', message: 'handler failed' });
     tv.send({ type: 'ack', utteranceId: 'u1', stage: 'rendered', hops: [] });
     await m.next('ack');
     m.ws.close();
@@ -231,6 +231,51 @@ describe('subprotocols', () => {
     cleanups.push(() => ws.terminate());
     await new Promise((r, j) => (ws.once('open', r), ws.once('error', j)));
     expect(ws.protocol).toBe('my-app');
+  });
+});
+
+describe('handler-failed tells the room that the handler failed, not why', () => {
+  it('a 3,000-character exception reaches the room as a generic, decodable handler-failed; the text goes only to the log', async () => {
+    const logs: Array<{ event: string; data?: Record<string, unknown> }> = [];
+    const secret = `prompt: ${'x'.repeat(3000)}`;
+    const { url } = await start({
+      log: (event, data) => logs.push({ event, data }),
+      onFinal: () => {
+        throw new Error(secret);
+      },
+    });
+    const tv = await screen(url);
+    const m = await mic(url, tv.code);
+    // A real client too: it refuses frames whose fields break the protocol's limits, so an uncapped message never arrives.
+    const client = new BridgeClient({ url, role: 'mic', code: tv.code, reconnect: false, WebSocketImpl: WebSocket as never });
+    cleanups.push(() => client.close());
+    await client.connect();
+    const decoded = new Promise<BridgeMessage>((r) => client.on('error', (e) => r(e)));
+    m.send({ type: 'transcript.final', utteranceId: 'u1', text: 'hi', hops: [] });
+    const expected = { type: 'error', code: 'handler-failed', message: 'handler failed', utteranceId: 'u1' };
+    expect(await tv.next('error')).toEqual(expected);
+    expect(await m.next('error')).toEqual(expected);
+    expect(await Promise.race([decoded, sleep(1000).then(() => 'never arrived')])).toEqual(expected);
+    expect(logs.find((l) => l.event === 'handler-failed')?.data).toMatchObject({ handler: 'dispatch', error: secret, code: tv.code, utteranceId: 'u1' });
+  });
+
+  it('exposeHandlerErrors sends the exception text, capped at the protocol limit so clients still decode it', async () => {
+    const texts = ['parser exploded', 'y'.repeat(3000)];
+    const { url } = await start({
+      exposeHandlerErrors: true,
+      onFinal: (_room, msg) => {
+        throw new Error(texts[Number(msg.utteranceId.slice(1))]);
+      },
+    });
+    const tv = await screen(url);
+    const m = await mic(url, tv.code);
+    m.send({ type: 'transcript.final', utteranceId: 'u0', text: 'hi', hops: [] });
+    expect(await tv.next('error')).toMatchObject({ code: 'handler-failed', utteranceId: 'u0', message: 'parser exploded' });
+    m.send({ type: 'transcript.final', utteranceId: 'u1', text: 'hi', hops: [] });
+    const long = (await tv.next('error')) as { message: string };
+    expect(long.message.length).toBe(FIELD_LIMITS.errorMessage);
+    expect(long.message.startsWith('yyyy')).toBe(true);
+    expect(decode(JSON.stringify(long))).not.toBeNull();
   });
 });
 

@@ -120,13 +120,14 @@ The hub rebuilds every relayed message from validated fields. Unknown fields are
 | `unknown-code` | No live room has that code, or it closed | First pairing: fatal. Reconnect: retry for `repairAfterMs` (default 60 s), then status `repair` |
 | `bad-message` | Unparseable frame or a bad field; the socket stays open | fatal |
 | `version` | The hub speaks another `v` | fatal |
-| `handler-failed` | The app's handler threw for `utteranceId` | n/a (sent after welcome) |
+| `handler-failed` | The app's handler threw for `utteranceId`. The message SHOULD be generic (reference: `handler failed`): the exception text goes to the hub's log, not to the room | n/a (sent after welcome) |
 | `rate-limited` | Too many hellos, wrong codes or messages; see `retryAfterMs` | retry no sooner than `retryAfterMs` |
 | `id-in-use` | Another live connection holds this `clientId` | fatal |
 | `full` | The hub or the room is at capacity | retry with backoff |
 | `not-allowed` | This role may not send this type | fatal |
 
 - Clients MUST treat an error code they do not know as a failure of the request that caused it.
+- A hub MUST keep every `message` within the 2,000-character limit of section 2; receivers refuse a longer one, so the error would never arrive.
 - Retries SHOULD use capped exponential backoff with jitter. The reference waits about 250 ms at first, doubles to a 10 s cap, and randomizes half of each delay.
 
 ## 9. Time and hops

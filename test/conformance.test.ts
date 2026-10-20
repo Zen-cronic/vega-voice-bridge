@@ -186,14 +186,20 @@ describe('hub as a black box (raw sockets)', () => {
     ok.send({ type: 'hello', v: 1, role: 'mic', clientId: 'mic_y', code: ` ${code.slice(0, 2).toLowerCase()}-${code.slice(2)} ` });
     expect(await ok.next()).toMatchObject({ type: 'welcome', code });
   });
-  it('a failing app handler surfaces as handler-failed with the utteranceId', async () => {
+  it('a failing app handler surfaces as handler-failed with the utteranceId, to screens and mics, without the exception text', async () => {
     const tv = client({ url, role: 'screen' });
     const { code } = await tv.connect();
     const phone = client({ url, role: 'mic', code });
     await phone.connect();
     const err = new Promise<BridgeMessage>((r) => tv.on('error', (m) => r(m)));
+    const micErr = new Promise<BridgeMessage>((r) => phone.on('error', (m) => r(m)));
     const id = phone.sendFinal('boom');
-    expect(await err).toMatchObject({ type: 'error', code: 'handler-failed', utteranceId: id, message: 'parser exploded' });
+    for (const m of [await err, await micErr]) {
+      expect(m).toMatchObject({ type: 'error', code: 'handler-failed', utteranceId: id });
+      const { message } = m as { message: string };
+      expect(message.length).toBeGreaterThan(0);
+      expect(message).not.toContain('parser exploded');
+    }
   });
 });
 
