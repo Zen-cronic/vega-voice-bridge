@@ -388,6 +388,42 @@ describe('rooms and pairing limits', () => {
     expect((await mic(url, tv.code, 'mic_late')).first).toMatchObject({ type: 'welcome', code: tv.code });
   });
 
+  it('M55: during a pairing pause, a paired TV and phone whose sockets dropped resume into their own room; strangers stay out', async () => {
+    let n = 0;
+    const { url, hub } = await start({ rateKey: () => `addr-${n++}`, limits: { hubCodeMisses: 3, hubCodeMissWindowMs: 5_000 } });
+    const tv = await screen(url, 'tv', { resumeToken: 'tv-secret' });
+    const phone = await mic(url, tv.code, 'phone', { resumeToken: 'phone-secret' });
+    expect(phone.first).toMatchObject({ type: 'welcome' });
+    for (const guess of ['ZZZZ', 'YYYY', 'XXXX']) expect((await mic(url, guess)).first).toMatchObject({ code: 'unknown-code' });
+    expect(hub.stats.pairingPauses).toBe(1);
+    // A Wi-Fi blip: both sockets drop, and both come back with their code, clientId and resume token.
+    tv.ws.terminate();
+    phone.ws.terminate();
+    await sleep(30);
+    expect(hub.rooms.has(tv.code)).toBe(true);
+    const tvBack = await screen(url, 'tv', { code: tv.code, resumeToken: 'tv-secret' });
+    expect(tvBack.code).toBe(tv.code);
+    expect((await mic(url, tv.code, 'phone', { resumeToken: 'phone-secret' })).first).toMatchObject({ type: 'welcome', code: tv.code });
+    // Still paused for everyone else: a new phone, a known clientId with the wrong token, a token in the wrong role.
+    for (const [id, extra] of [
+      ['stranger', {}],
+      ['phone', { resumeToken: 'guess' }],
+      ['phone', {}],
+    ] as const)
+      expect((await mic(url, tv.code, id, extra)).first, id).toMatchObject({ code: 'rate-limited' });
+    const asScreen = await raw(url);
+    asScreen.send({ type: 'hello', v: 1, role: 'screen', clientId: 'phone', code: tv.code, resumeToken: 'phone-secret' });
+    expect(await asScreen.next()).toMatchObject({ code: 'rate-limited' });
+  });
+
+  it('M55: one rate key counts for at most a tenth of the hub-wide budget, so one address cannot pause pairing for everyone', async () => {
+    const { url, hub } = await start({ limits: { codeMissesPerMinute: 1_000, hubCodeMisses: 20 } });
+    const tv = await screen(url);
+    for (let i = 0; i < 40; i++) expect((await mic(url, '0000')).first).toMatchObject({ code: 'unknown-code' });
+    expect(hub.stats.pairingPauses).toBe(0);
+    expect((await mic(url, tv.code, 'neighbour_phone')).first).toMatchObject({ type: 'welcome' });
+  });
+
   it('IPv6 clients are keyed on their /64: addresses inside one share the wrong-code budget', async () => {
     let n = 1;
     // One host can use any address in its /64 (privacy addresses, or a whole delegated prefix).

@@ -62,10 +62,12 @@ export interface HubLimits {
   codeMissesPerMinute: number;
   /**
    * The same misses counted across every rate key, per `hubCodeMissWindowMs`: the budget for guesses spread over many
-   * addresses. Past it, pairing pauses until the window ends: every hello that names a code is refused
-   * (`rate-limited`), the right code too, so a guess learns nothing. Paired peers stay connected, and a screen
-   * asking for a fresh code still gets one. TVs resuming after a hub restart count as misses, so raise it for a hub
-   * that serves more than a few dozen TVs. Default 100. 0 disables.
+   * addresses. One rate key counts for at most a tenth of it, so a single address cannot spend it alone. Past it,
+   * pairing pauses until the window ends: every hello that names a code is refused (`rate-limited`), the right code
+   * too, so a guess learns nothing. Not refused: peers already connected; a peer resuming into its room, with the
+   * clientId, role and resumeToken it joined with (a TV or phone back from a Wi-Fi blip); and a screen asking for a
+   * fresh code. TVs resuming after a hub restart count as misses, so raise it for a hub that serves more than a few
+   * dozen TVs. Default 100. 0 disables.
    */
   hubCodeMisses: number;
   /** The window of `hubCodeMisses`. Default 10 minutes. */
@@ -492,6 +494,10 @@ export class BridgeHub {
   private readonly hellos: FixedWindow;
   private readonly misses: FixedWindow;
   private readonly hubMisses: FixedWindow;
+  /** How many of each rate key's misses this hub-wide window has counted (at most a tenth of the budget). */
+  private readonly hubShare: FixedWindow;
+  /** Peers that joined each room with a resume token: clientId -> role and token, so they can resume during a pause. */
+  private readonly members = new WeakMap<Room, Map<string, { role: Role; token: string }>>();
   private readonly graceMs: number;
   private readonly random: () => number;
   private readonly originAllowed: ((origin: string, req: IncomingMessage) => boolean) | null;
@@ -516,6 +522,7 @@ export class BridgeHub {
     this.hellos = new FixedWindow(this.limits.hellosPerMinute, 60_000);
     this.misses = new FixedWindow(this.limits.codeMissesPerMinute, 60_000);
     this.hubMisses = new FixedWindow(this.limits.hubCodeMisses, this.limits.hubCodeMissWindowMs);
+    this.hubShare = new FixedWindow(Math.ceil(this.limits.hubCodeMisses / 10), this.limits.hubCodeMissWindowMs);
     // Without handleProtocols, ws echoes the first subprotocol the client offers, whatever it is.
     const selectable = new Set(opts.protocols ?? []);
     const handleProtocols = (offered: Set<string>): string | false => {
@@ -883,12 +890,16 @@ export class BridgeHub {
     // A second hello on the same socket moves it cleanly (no ghost peer left behind).
     if (conn.me) this.leave(conn);
     const code = normalizeCode(msg.code);
+    // A peer coming back to its own live room (same clientId, role and resume token) is not a guess, so neither
+    // wrong-code budget refuses it. Without the token there is nothing to tell it from a guess.
+    const live = code ? this.rooms.get(code) : undefined;
+    const resuming = !!live && this.isMember(live, msg);
     let room: Room | null;
     if (msg.role === 'mic') {
-      if (this.misses.full(conn.key, t))
+      if (!resuming && this.misses.full(conn.key, t))
         return this.error(ws, 'rate-limited', 'too many wrong codes; wait before trying again', { retryAfterMs: this.misses.retryAfter(conn.key, t) });
-      if (this.hubMisses.full(HUB_WIDE, t)) return this.pairingPaused(ws, t);
-      room = code ? (this.rooms.get(code) ?? null) : null;
+      if (!resuming && this.hubMisses.full(HUB_WIDE, t)) return this.pairingPaused(ws, t);
+      room = live ?? null;
       if (!room) {
         this.miss(conn.key, t);
         return this.error(ws, 'unknown-code', `no TV is showing code ${code || '(none)'}`);
@@ -897,7 +908,7 @@ export class BridgeHub {
       // A screen naming a code joins that room if it exists, so a screen probing codes is a guess like a mic's:
       // a miss (which creates the room, as a resume after a hub restart does) counts against the same budgets.
       const explicit = isPairingCode(code);
-      if (explicit && this.hubMisses.full(HUB_WIDE, t)) return this.pairingPaused(ws, t);
+      if (explicit && !resuming && this.hubMisses.full(HUB_WIDE, t)) return this.pairingPaused(ws, t);
       if (explicit && !this.rooms.has(code)) {
         if (this.misses.full(conn.key, t))
           return this.error(ws, 'rate-limited', 'too many unknown codes; wait before trying again', { retryAfterMs: this.misses.retryAfter(conn.key, t) });
@@ -922,9 +933,26 @@ export class BridgeHub {
     this.join(conn, room, msg);
   }
 
-  /** Count a hello naming a code no live room has, per rate key and hub-wide. */
+  /** Did this hello's clientId join `room` before, in the same role and with the same resume token? */
+  private isMember(room: Room, msg: HelloMsg): boolean {
+    const m = msg.resumeToken ? this.members.get(room)?.get(msg.clientId) : undefined;
+    return !!m && m.role === msg.role && m.token === msg.resumeToken;
+  }
+
+  /** Remember a peer that joined with a resume token (bounded per room; the oldest is forgotten first). */
+  private remember(room: Room, msg: HelloMsg) {
+    if (!msg.resumeToken) return;
+    let m = this.members.get(room);
+    if (!m) this.members.set(room, (m = new Map()));
+    m.delete(msg.clientId);
+    m.set(msg.clientId, { role: msg.role, token: msg.resumeToken });
+    while (m.size > this.limits.maxPeersPerRoom * 4) m.delete(m.keys().next().value!);
+  }
+
+  /** Count a hello naming a code no live room has: per rate key, and hub-wide up to the key's share. */
   private miss(key: string, t: number) {
     this.misses.hit(key, t);
+    if (!this.hubShare.hit(key, t)) return;
     if (!this.hubMisses.hit(HUB_WIDE, t)) return;
     if (this.hubMisses.full(HUB_WIDE, t)) {
       this.stats.pairingPauses++;
@@ -980,6 +1008,7 @@ export class BridgeHub {
     const ws = conn.ws;
     const me: Peer = { clientId: msg.clientId, role: msg.role, name: msg.name, socket: ws };
     room.peers.set(me.clientId, me);
+    this.remember(room, msg);
     if (msg.resumeToken) this.tokenOf.set(ws, msg.resumeToken);
     else this.tokenOf.delete(ws);
     if (me.role === 'screen') this.screenlessSince.delete(room);
