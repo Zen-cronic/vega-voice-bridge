@@ -363,6 +363,40 @@ describe('rooms and pairing limits', () => {
     expect((blocked.first as { retryAfterMs: number }).retryAfterMs).toBeGreaterThan(0);
   });
 
+  it('pairing brute force from many addresses: past hubCodeMisses wrong codes hub-wide, pairing pauses for every code, the right one too', async () => {
+    let n = 0;
+    const logs: string[] = [];
+    // Every connection gets its own rate key, as guesses spread over many addresses (or one IPv6 /48) would.
+    const { url, hub } = await start({ rateKey: () => `addr-${n++}`, limits: { hubCodeMisses: 3, hubCodeMissWindowMs: 300 }, log: (e) => logs.push(e) });
+    const tv = await screen(url);
+    for (const guess of ['ZZZZ', 'YYYY', 'XXXX']) expect((await mic(url, guess)).first).toMatchObject({ type: 'error', code: 'unknown-code' });
+    // A guess now learns nothing: the live code is refused like any other, by mics and by screens naming it.
+    const right = (await mic(url, tv.code)).first as { code: string; retryAfterMs: number };
+    expect(right).toMatchObject({ type: 'error', code: 'rate-limited' });
+    expect(right.retryAfterMs).toBeGreaterThan(0);
+    expect(right.retryAfterMs).toBeLessThanOrEqual(300);
+    const probe = await raw(url);
+    probe.send({ type: 'hello', v: 1, role: 'screen', clientId: 'probe', code: tv.code });
+    expect(await probe.next()).toMatchObject({ type: 'error', code: 'rate-limited' });
+    expect(hub.rooms.get(tv.code)!.peers.size).toBe(1);
+    // A TV asking for a fresh code still gets one; the paired room is untouched.
+    expect((await screen(url, 'new_tv')).code).toMatch(/^[A-Z2-9]{4}$/);
+    expect(hub.stats.pairingPauses).toBe(1);
+    expect(logs.filter((e) => e === 'pairing-paused')).toHaveLength(1);
+    // The pause ends with the window.
+    await sleep(320);
+    expect((await mic(url, tv.code, 'mic_late')).first).toMatchObject({ type: 'welcome', code: tv.code });
+  });
+
+  it('hubCodeMisses: 0 turns the hub-wide budget off', async () => {
+    let n = 0;
+    const { url, hub } = await start({ rateKey: () => `addr-${n++}`, limits: { hubCodeMisses: 0 } });
+    const tv = await screen(url);
+    for (let i = 0; i < 120; i++) expect((await mic(url, '0000')).first).toMatchObject({ code: 'unknown-code' }); // past the default of 100
+    expect((await mic(url, tv.code)).first).toMatchObject({ type: 'welcome' });
+    expect(hub.stats.pairingPauses).toBe(0);
+  });
+
   it('hellosPerMinute limits hellos per rate key; rateKey can split clients behind one proxy', async () => {
     const { url } = await start({ limits: { hellosPerMinute: 2 } });
     await screen(url, 'a');

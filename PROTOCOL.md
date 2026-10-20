@@ -91,7 +91,9 @@ The hub rebuilds every relayed message from validated fields. Unknown fields are
   - hellos per minute (default 120);
   - hellos that name a code no live room has, per minute (default 30). This covers mics with a wrong code and screens whose explicit code misses: such a screen hello creates the room, as a resume does, but it is also how a screen would probe codes. Past the limit, hellos that name a code are refused until the window ends. A screen hello without a code is not limited by this budget.
 
-  Both answer `rate-limited` with `retryAfterMs`.
+  The same misses are also counted **hub-wide**, across all rate keys (reference: 100 per 10 minutes), for guesses spread over many addresses. Past that budget, pairing pauses until the window ends: every hello that names a code is refused, the right code included, so a refusal tells a guesser nothing. Peers already in a room stay connected, and a screen hello without a code still gets a fresh room.
+
+  All of these answer `rate-limited` with `retryAfterMs`.
 
 ## 6. Identity: `clientId` and `resumeToken`
 

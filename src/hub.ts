@@ -60,6 +60,16 @@ export interface HubLimits {
   hellosPerMinute: number;
   /** Hellos naming a code no live room has (mic, or a screen probing) per rate key per minute; past it, hellos naming a code are refused. Default 30. 0 disables. */
   codeMissesPerMinute: number;
+  /**
+   * The same misses counted across every rate key, per `hubCodeMissWindowMs`: the budget for guesses spread over many
+   * addresses. Past it, pairing pauses until the window ends: every hello that names a code is refused
+   * (`rate-limited`), the right code too, so a guess learns nothing. Paired peers stay connected, and a screen
+   * asking for a fresh code still gets one. TVs resuming after a hub restart count as misses, so raise it for a hub
+   * that serves more than a few dozen TVs. Default 100. 0 disables.
+   */
+  hubCodeMisses: number;
+  /** The window of `hubCodeMisses`. Default 10 minutes. */
+  hubCodeMissWindowMs: number;
   /** Above this many buffered bytes to one peer, live captions and untracked app frames to it are dropped. Default 1 MiB. */
   maxBufferedBytes: number;
   /** Above this many buffered bytes the peer is disconnected (it reconnects and gets fresh state). Default 8 MiB. */
@@ -73,6 +83,8 @@ export const DEFAULT_HUB_LIMITS: Readonly<HubLimits> = {
   messagesPerSecond: 100,
   hellosPerMinute: 120,
   codeMissesPerMinute: 30,
+  hubCodeMisses: 100,
+  hubCodeMissWindowMs: 10 * 60_000,
   maxBufferedBytes: 1024 * 1024,
   maxBufferedBytesHard: 8 * 1024 * 1024,
 };
@@ -139,6 +151,8 @@ export interface HubStats {
   heartbeatTimeouts: number;
   handlerErrors: number;
   roomsExpired: number;
+  /** Times the hub-wide wrong-code budget ran out and pairing paused. */
+  pairingPauses: number;
 }
 
 interface Conn {
@@ -154,6 +168,8 @@ interface Conn {
 }
 
 const MAX_INBOUND_HOPS = 32;
+/** The one key of the hub-wide wrong-code window. */
+const HUB_WIDE = '*';
 const mono = () => performance.now();
 
 /** What `handler-failed` says to the room unless `exposeHandlerErrors` is on. */
@@ -334,7 +350,7 @@ class FixedWindow {
 export class BridgeHub {
   readonly rooms = new Map<string, Room>();
   readonly limits: Readonly<HubLimits>;
-  readonly stats: HubStats = { badMessages: 0, rateLimited: 0, backpressureDrops: 0, backpressureCloses: 0, heartbeatTimeouts: 0, handlerErrors: 0, roomsExpired: 0 };
+  readonly stats: HubStats = { badMessages: 0, rateLimited: 0, backpressureDrops: 0, backpressureCloses: 0, heartbeatTimeouts: 0, handlerErrors: 0, roomsExpired: 0, pairingPauses: 0 };
   private wss: WebSocketServer;
   private clock: () => number;
   private readonly path: string;
@@ -344,6 +360,7 @@ export class BridgeHub {
   private readonly screenlessSince = new WeakMap<Room, number>();
   private readonly hellos: FixedWindow;
   private readonly misses: FixedWindow;
+  private readonly hubMisses: FixedWindow;
   private readonly graceMs: number;
   private readonly random: () => number;
   private timers: Array<ReturnType<typeof setInterval>> = [];
@@ -357,6 +374,7 @@ export class BridgeHub {
     this.random = opts.random ?? secureRandom;
     this.hellos = new FixedWindow(this.limits.hellosPerMinute, 60_000);
     this.misses = new FixedWindow(this.limits.codeMissesPerMinute, 60_000);
+    this.hubMisses = new FixedWindow(this.limits.hubCodeMisses, this.limits.hubCodeMissWindowMs);
     // Without handleProtocols, ws echoes the first subprotocol the client offers, whatever it is.
     const selectable = new Set(opts.protocols ?? []);
     const handleProtocols = (offered: Set<string>): string | false => {
@@ -707,19 +725,21 @@ export class BridgeHub {
     if (msg.role === 'mic') {
       if (this.misses.full(conn.key, t))
         return this.error(ws, 'rate-limited', 'too many wrong codes; wait before trying again', { retryAfterMs: this.misses.retryAfter(conn.key, t) });
+      if (this.hubMisses.full(HUB_WIDE, t)) return this.pairingPaused(ws, t);
       room = code ? (this.rooms.get(code) ?? null) : null;
       if (!room) {
-        this.misses.hit(conn.key, t);
+        this.miss(conn.key, t);
         return this.error(ws, 'unknown-code', `no TV is showing code ${code || '(none)'}`);
       }
     } else {
       // A screen naming a code joins that room if it exists, so a screen probing codes is a guess like a mic's:
-      // a miss (which creates the room, as a resume after a hub restart does) counts against the same budget.
+      // a miss (which creates the room, as a resume after a hub restart does) counts against the same budgets.
       const explicit = isPairingCode(code);
+      if (explicit && this.hubMisses.full(HUB_WIDE, t)) return this.pairingPaused(ws, t);
       if (explicit && !this.rooms.has(code)) {
         if (this.misses.full(conn.key, t))
           return this.error(ws, 'rate-limited', 'too many unknown codes; wait before trying again', { retryAfterMs: this.misses.retryAfter(conn.key, t) });
-        this.misses.hit(conn.key, t);
+        this.miss(conn.key, t);
       }
       room = this.tryCreateRoom(explicit ? code : undefined);
       if (!room) return this.error(ws, 'full', 'the hub has no free room');
@@ -738,6 +758,20 @@ export class BridgeHub {
       }
     }
     this.join(conn, room, msg);
+  }
+
+  /** Count a hello naming a code no live room has, per rate key and hub-wide. */
+  private miss(key: string, t: number) {
+    this.misses.hit(key, t);
+    if (!this.hubMisses.hit(HUB_WIDE, t)) return;
+    if (this.hubMisses.full(HUB_WIDE, t)) {
+      this.stats.pairingPauses++;
+      this.log('pairing-paused', { misses: this.limits.hubCodeMisses, retryAfterMs: this.hubMisses.retryAfter(HUB_WIDE, t) });
+    }
+  }
+
+  private pairingPaused(ws: WebSocket, t: number) {
+    this.error(ws, 'rate-limited', 'pairing is paused: too many wrong codes on this hub; wait before trying again', { retryAfterMs: this.hubMisses.retryAfter(HUB_WIDE, t) });
   }
 
   /**
