@@ -474,6 +474,10 @@ class FixedWindow {
     const e = this.hits.get(key);
     return e ? Math.max(0, Math.ceil(e.start + this.ms - t)) : 0;
   }
+  /** When the current window began (a new one begins at `t` if the last has ended; does not count). */
+  startOf(key: string, t: number): number {
+    return this.entry(key, t).start;
+  }
 }
 
 /**
@@ -494,7 +498,7 @@ export class BridgeHub {
   private readonly hellos: FixedWindow;
   private readonly misses: FixedWindow;
   private readonly hubMisses: FixedWindow;
-  /** How many of each rate key's misses this hub-wide window has counted (at most a tenth of the budget). */
+  /** How many of each rate key's misses each hub-wide window has counted (at most a tenth of the budget), keyed by both. */
   private readonly hubShare: FixedWindow;
   /** Peers that joined each room with a resume token: clientId -> role and token, so they can resume during a pause. */
   private readonly members = new WeakMap<Room, Map<string, { role: Role; token: string }>>();
@@ -952,7 +956,9 @@ export class BridgeHub {
   /** Count a hello naming a code no live room has: per rate key, and hub-wide up to the key's share. */
   private miss(key: string, t: number) {
     this.misses.hit(key, t);
-    if (!this.hubShare.hit(key, t)) return;
+    // The share is counted inside the hub-wide window it is a share of. A window of the key's own would start at
+    // its first miss, so misses on both sides of a hub-wide window's end could count for up to twice the share.
+    if (!this.hubShare.hit(`${this.hubMisses.startOf(HUB_WIDE, t)} ${key}`, t)) return;
     if (!this.hubMisses.hit(HUB_WIDE, t)) return;
     if (this.hubMisses.full(HUB_WIDE, t)) {
       this.stats.pairingPauses++;

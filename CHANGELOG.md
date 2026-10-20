@@ -5,6 +5,9 @@
 ### Added
 - **A portable conformance kit.** The wire vectors are plain JSON in `test/vectors/wire.json` (messages to accept unchanged, frames to refuse with the field named, frames to normalize), read by `test/conformance.test.ts` and usable from any language. `test/hub-conformance.test.ts` is the hub's side over raw WebSockets; `npm test` runs it against this repo's CLI hub, `TVB_HUB_URL=ws://host:port/ws npm run conformance` against any running hub with an echo responder, and CI against a separate hub process.
 
+### Fixed
+- **Hub: one rate key counts for at most a tenth of each hub-wide wrong-code window, as documented.** Its share was a window of its own, which began at its first miss and so did not line up with the hub-wide one: a key's misses on both sides of a hub-wide window's end could count for up to twice its share less one in a single window (19 of the default 100), so about 6 addresses could pause pairing instead of 10. The share is now counted inside the hub-wide window.
+
 ## 0.4.0 (2026-10-20)
 
 The wire protocol is still v1, revision 3: no message or field changed, and 0.3 clients and hubs work with 0.4 ones both ways. The minor bump is for hub behaviour that changed by default (under "Changed").

@@ -5,7 +5,7 @@
  */
 import { createServer, request, type Server } from 'node:http';
 import net, { type Socket } from 'node:net';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WebSocket } from 'ws';
 import { BridgeHub, localOriginPolicy, rateKeyBucket, type HubOptions } from '../src/hub.js';
 import { BridgeClient, FIELD_LIMITS, decode, type BridgeMessage } from '../src/index.js';
@@ -422,6 +422,36 @@ describe('rooms and pairing limits', () => {
     for (let i = 0; i < 40; i++) expect((await mic(url, '0000')).first).toMatchObject({ code: 'unknown-code' });
     expect(hub.stats.pairingPauses).toBe(0);
     expect((await mic(url, tv.code, 'neighbour_phone')).first).toMatchObject({ type: 'welcome' });
+  });
+
+  it('L157: the share is a tenth of each hub-wide window, so misses on both sides of a window end do not add up past it', async () => {
+    // The budgets run on performance.now(); faking only that clock places each miss exactly, and sockets stay real.
+    vi.useFakeTimers({ toFake: ['performance'] });
+    cleanups.push(() => vi.useRealTimers());
+    let key = 'tv';
+    const { url, hub } = await start({ rateKey: () => key, limits: { codeMissesPerMinute: 1_000, hubCodeMisses: 11, hubCodeMissWindowMs: 1_000 } });
+    const tv = await screen(url);
+    const missFrom = async (k: string) => {
+      key = k;
+      expect((await mic(url, '0000', `guess_${k}`)).first).toMatchObject({ code: 'unknown-code' });
+    };
+    // A share is ceil(11 / 10) = 2. A opens a hub-wide window at 0 ms; K's first miss is at 600 ms.
+    await missFrom('A');
+    vi.advanceTimersByTime(600);
+    await missFrom('K');
+    vi.advanceTimersByTime(500); // 1,100 ms: a new hub-wide window
+    await missFrom('K');
+    vi.advanceTimersByTime(600); // 1,700 ms: past a window that started with K's first miss
+    await missFrom('K');
+    await missFrom('K');
+    // Four more keys at their full share: 8 misses, 10 in this window with K's 2, one short of the budget.
+    for (const k of ['B', 'C', 'D', 'E']) for (let i = 0; i < 2; i++) await missFrom(k);
+    expect(hub.stats.pairingPauses).toBe(0);
+    key = 'neighbour';
+    expect((await mic(url, tv.code, 'neighbour_phone')).first).toMatchObject({ type: 'welcome' });
+    // The eleventh counted miss, from one more key, does pause pairing.
+    await missFrom('F');
+    expect(hub.stats.pairingPauses).toBe(1);
   });
 
   it('IPv6 clients are keyed on their /64: addresses inside one share the wrong-code budget', async () => {
