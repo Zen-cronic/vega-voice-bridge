@@ -46,6 +46,15 @@ describe('releases', () => {
     expect([lock.version, lock.packages['']?.version]).toEqual([pkg.version, pkg.version]);
   });
 
+  it('L161: no line of src/, which the package ships, holds the same comment twice (an insertion left behind)', () => {
+    const doubled: string[] = [];
+    for (const f of readdirSync(new URL('../src/', import.meta.url)).filter((f) => f.endsWith('.ts')))
+      read(`src/${f}`)
+        .split('\n')
+        .forEach((line, i) => /(\/\/ .{10,})\1/.test(line) && doubled.push(`src/${f}:${i + 1}`));
+    expect(doubled).toEqual([]);
+  });
+
   it("L160: the Vega example's `npm run hub` writes its address to a file git ignores; the tracked hub.json stays on loopback", () => {
     const app = 'examples/vega-voice-loop/vega';
     // The tracked default is the reverse port forward's address, never a LAN one.

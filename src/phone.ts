@@ -128,7 +128,7 @@ export function voiceSupport(env: VoiceSupportEnv = {}): VoiceSupport {
   return v;
 }
 
-// Web Speech, reduced to what the mic uses (so tests and other recognizers can stand in).// Web Speech, reduced to what the mic uses (so tests and other recognizers can stand in).
+// Web Speech, reduced to what the mic uses (so tests and other recognizers can stand in).
 export interface RecognitionAlternativeLike {
   transcript: string;
 }
