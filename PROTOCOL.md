@@ -7,9 +7,9 @@ This is the wire contract between a **hub** and its clients: **screens** (TV app
 3. The TV renders the result and confirms the render.
 4. The TV speaks a reply and confirms playback.
 
-**Status:** protocol version `1`, revision 3. Package 0.3.0 implements revision 3, 0.2.0 implemented revision 2, and 0.1.0 revision 1. All three revisions interoperate in both directions (see [Revision history](#revision-history)).
+**Status:** protocol version `1`, revision 3. Packages 0.3.x and 0.4.x implement revision 3, 0.2.0 implemented revision 2, and 0.1.0 revision 1. All three revisions interoperate in both directions (see [Revision history](#revision-history)).
 
-**Reference tests.** A second implementation (another language or another TV platform) is conformant when it passes the following:
+**Reference tests.** These suites pin the protocol down. Today they run in-process against this repo's TypeScript hub and client; a mode that runs the black-box hub cases against any hub URL is planned. A second implementation (another language or another TV platform) is conformant when it behaves as these cases require:
 
 | File | What it pins down | Required of |
 |---|---|---|
