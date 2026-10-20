@@ -6,9 +6,9 @@
 //   ffmpeg does the encoding.
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { platform } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 
 const exec = (cmd, args, env) => new Promise((resolve, reject) => execFile(cmd, args, { env: { ...process.env, ...env } }, (err, _o, stderr) => (err ? reject(new Error(`${cmd}: ${stderr || err.message}`.trim())) : resolve())));
 
@@ -45,7 +45,9 @@ export function ttsEngine(env = process.env, { run = exec, os = platform() } = {
 /**
  * Make (or reuse) the clips for `text`; returns the file id. Two requests for the same clip while it renders share
  * one render (two phones in a room, or the same reply twice), and each render works in files of its own, so one
- * finishing never removes what another is still reading.
+ * finishing never removes what another is still reading. Both clips are encoded into work files and moved into
+ * place only when both succeeded, so an encode that fails or is killed partway never leaves a partial clip to be
+ * served from the cache; whatever a render leaves behind (its WAV or Polly MP3, a half-written clip) is removed.
  */
 export function createTts({ dir, engine = ttsEngine(), run = exec } = {}) {
   mkdirSync(dir, { recursive: true });
@@ -53,15 +55,18 @@ export function createTts({ dir, engine = ttsEngine(), run = exec } = {}) {
   let seq = 0;
   const make = async (id, text) => {
     const base = join(dir, id);
-    if (existsSync(`${base}.m4a`)) return { id, cached: true };
+    if (existsSync(`${base}.m4a`) && existsSync(`${base}.mp3`)) return { id, cached: true };
     const work = join(dir, `${id}.${process.pid}-${++seq}`);
-    let src;
     try {
-      src = await engine.render(text, work);
-      await run('ffmpeg', ['-loglevel', 'error', '-i', src, '-c:a', 'aac', '-b:a', '64k', '-ar', '44100', '-ac', '1', '-movflags', '+frag_keyframe+empty_moov+default_base_moof', '-frag_duration', '500000', '-f', 'mp4', '-y', `${base}.m4a`]);
-      await run('ffmpeg', ['-loglevel', 'error', '-i', src, '-codec:a', 'libmp3lame', '-b:a', '48k', '-ac', '1', '-y', `${base}.mp3`]);
+      const src = await engine.render(text, work);
+      await run('ffmpeg', ['-loglevel', 'error', '-i', src, '-c:a', 'aac', '-b:a', '64k', '-ar', '44100', '-ac', '1', '-movflags', '+frag_keyframe+empty_moov+default_base_moof', '-frag_duration', '500000', '-f', 'mp4', '-y', `${work}.m4a`]);
+      await run('ffmpeg', ['-loglevel', 'error', '-i', src, '-codec:a', 'libmp3lame', '-b:a', '48k', '-ac', '1', '-f', 'mp3', '-y', `${work}.mp3`]);
+      // The MP3 first: the hub serves the .m4a, and a clip counts as cached only when both are there.
+      renameSync(`${work}.mp3`, `${base}.mp3`);
+      renameSync(`${work}.m4a`, `${base}.m4a`);
     } finally {
-      if (src) rmSync(src, { force: true });
+      const prefix = `${basename(work)}.`;
+      for (const f of readdirSync(dir)) if (f.startsWith(prefix)) rmSync(join(dir, f), { force: true });
     }
     return { id, cached: false };
   };

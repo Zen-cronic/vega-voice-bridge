@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -9,6 +9,13 @@ type Call = { cmd: string; args: string[]; env?: Record<string, string> };
 const recorder = () => {
   const calls: Call[] = [];
   return { calls, run: async (cmd: string, args: string[], env?: Record<string, string>) => void calls.push({ cmd, args, env }) };
+};
+// Stands in for ffmpeg: writes its output file (the last argument), or fails on the step named.
+const encoder = (o: { failOn?: 'm4a' | 'mp3'; calls?: Call[] } = {}) => async (cmd: string, args: string[]) => {
+  o.calls?.push({ cmd, args });
+  const out = args.at(-1)!;
+  writeFileSync(out, 'partial');
+  if (o.failOn && out.endsWith(`.${o.failOn}`)) throw new Error('ffmpeg: killed');
 };
 
 describe('the voice loop text-to-speech', () => {
@@ -67,27 +74,51 @@ describe('the voice loop text-to-speech', () => {
   it('encodes whatever the engine rendered into fragmented MP4 and MP3, keyed by engine and text', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'tts-'));
     dirs.push(dir);
-    const r = recorder();
-    const engine = { name: 'polly (generative Ruth)', render: async (_t: string, base: string) => `${base}.polly.mp3` };
-    const tts = createTts({ dir, engine, run: r.run });
+    const calls: Call[] = [];
+    const run = encoder({ calls });
+    const engine = { name: 'polly (generative Ruth)', render: async (_t: string, base: string) => (writeFileSync(`${base}.polly.mp3`, 'x'), `${base}.polly.mp3`) };
+    const tts = createTts({ dir, engine, run });
     const { id } = await tts.clip('Hello there.');
-    const other = await createTts({ dir, engine: { ...engine, name: 'espeak' }, run: r.run }).clip('Hello there.');
+    const other = await createTts({ dir, engine: { ...engine, name: 'espeak' }, run }).clip('Hello there.');
     expect(other.id).not.toBe(id);
-    const [m4a, mp3] = r.calls as [Call, Call];
+    const [m4a, mp3] = calls as [Call, Call];
     expect(m4a.args.some((a) => a.startsWith(join(dir, `${id}.`)) && a.endsWith('.polly.mp3'))).toBe(true);
-    expect(m4a.args).toEqual(expect.arrayContaining(['-movflags', '+frag_keyframe+empty_moov+default_base_moof', join(dir, `${id}.m4a`)]));
-    expect(mp3.args).toEqual(expect.arrayContaining(['libmp3lame', join(dir, `${id}.mp3`)]));
+    expect(m4a.args).toEqual(expect.arrayContaining(['-movflags', '+frag_keyframe+empty_moov+default_base_moof']));
+    expect(mp3.args).toEqual(expect.arrayContaining(['libmp3lame']));
+    // encoded into work files, then moved into place; nothing else is left
+    expect(readdirSync(dir).sort()).toEqual([`${id}.m4a`, `${id}.mp3`, `${other.id}.m4a`, `${other.id}.mp3`].sort());
+    expect((await tts.clip('Hello there.')).cached).toBe(true);
+  });
+
+  it('a failed or killed encode leaves no clip to be served from the cache, and no work files', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tts-'));
+    dirs.push(dir);
+    const engine = { name: 'espeak', render: async (_t: string, base: string) => (writeFileSync(`${base}.wav`, 'x'), `${base}.wav`) };
+    for (const failOn of ['m4a', 'mp3'] as const) {
+      const tts = createTts({ dir, engine, run: encoder({ failOn }) });
+      await expect(tts.clip('Broken reply.')).rejects.toThrow(/killed/);
+      expect(readdirSync(dir)).toEqual([]);
+    }
+    // the engine failing leaves nothing either, and a later render that works is not served a broken clip
+    const failing = createTts({ dir, engine: { name: 'espeak', render: async (_t: string, base: string) => (writeFileSync(`${base}.wav`, 'half'), Promise.reject(new Error('espeak: no voice'))) }, run: encoder() });
+    await expect(failing.clip('Broken reply.')).rejects.toThrow(/no voice/);
+    expect(readdirSync(dir)).toEqual([]);
+    const ok = await createTts({ dir, engine, run: encoder() }).clip('Broken reply.');
+    expect(ok.cached).toBe(false);
+    // only the .m4a there (an older version's partial clip): rendered again, not served
+    rmSync(join(dir, `${ok.id}.mp3`));
+    expect((await createTts({ dir, engine, run: encoder() }).clip('Broken reply.')).cached).toBe(false);
+    expect(existsSync(join(dir, `${ok.id}.mp3`))).toBe(true);
   });
 
   it('the same clip asked for twice while it renders is rendered once, and renders never share work files', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'tts-'));
     dirs.push(dir);
-    const r = recorder();
     const bases: string[] = [];
     let release!: () => void;
     const gate = new Promise<void>((res) => (release = res));
     const engine = { name: 'espeak', render: async (_t: string, base: string) => (bases.push(base), await gate, `${base}.wav`) };
-    const tts = createTts({ dir, engine, run: r.run });
+    const tts = createTts({ dir, engine, run: encoder() });
     const a = tts.clip('Same reply.');
     const b = tts.clip('Same reply.');
     const c = tts.clip('Another reply.');
@@ -96,7 +127,8 @@ describe('the voice loop text-to-speech', () => {
     expect(rb).toBe(ra);
     expect(rc.id).not.toBe(ra.id);
     expect(bases).toHaveLength(2);
-    // After it settles, a new render (nothing was written by the stand-in, so it renders again) gets its own files.
+    // After it settles, a new render (the clip was removed, so it renders again) gets its own files.
+    for (const ext of ['m4a', 'mp3']) rmSync(join(dir, `${ra.id}.${ext}`));
     await tts.clip('Same reply.');
     expect(bases).toHaveLength(3);
     expect(new Set(bases).size).toBe(3);
