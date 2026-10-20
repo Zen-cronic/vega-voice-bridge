@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.5
+
+The wire protocol is unchanged (v1, revision 3). The package's code is unchanged; only the example below is.
+
+### Fixed
+- **`examples/vega-voice-loop`:** a clip is served from the cache only when its `<id>.ok` marker is there and matches both files' sizes. The marker is written after both clips are in place. A clip made by an older version has no marker, so it is rendered again once: 0.3.3 could leave a full `.m4a` with a cut-short `.mp3` that 0.3.4 kept serving.
+- **`examples/vega-voice-loop`:** work files a killed hub left in `.tts/` are swept when the hub starts, and the hub now stops its renders and removes their files on Ctrl-C (SIGINT) and SIGTERM (`createTts(...).close()`). With Polly, that includes the file holding the reply text.
+- **`examples/vega-voice-loop`:** work files are named per instance, so two `createTts` on one directory no longer remove each other's files.
+- **`examples/vega-voice-loop`:** a render removes its own files by name instead of listing the whole cache, and a failed removal no longer replaces the render's own error (a cache directory removed while the hub ran used to report `ENOENT` instead of the engine's failure).
+
 ## 0.3.4
 
 The wire protocol is unchanged (v1, revision 3). The package's code is unchanged; only the example below is.
