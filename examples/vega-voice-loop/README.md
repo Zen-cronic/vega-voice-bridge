@@ -13,7 +13,7 @@ Needs the Vega SDK, `ffmpeg`, and `espeak` (Linux) or `say` (macOS); or the AWS 
 
 ```bash
 # 1. the package, as a tarball the app installs
-npm install && npm pack                                   # -> tv-voice-bridge-0.3.5.tgz at the repo root
+npm install && npm pack                                   # -> tv-voice-bridge-0.4.0.tgz at the repo root
 
 # 2. the hub (port 8790): bridge + stub agent + text-to-speech
 node examples/vega-voice-loop/hub.mjs

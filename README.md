@@ -22,7 +22,7 @@ What is in the package:
 | `…/vega` | `createVegaSayPlayer()`: the TV speaks back on Vega OS, from a plain-http hub ([below](#the-tv-speaks-back-on-vega)) |
 | [PROTOCOL.md](PROTOCOL.md) | The wire protocol (v1), for a second implementation on another platform |
 
-> MIT licensed. The package is `tv-voice-bridge`; it is marked `"private": true` and not on npm yet, so install it from git or a packed tarball (below). Current version: **0.3.5** (protocol v1, revision 3; see [CHANGELOG.md](CHANGELOG.md)).
+> MIT licensed. The package is `tv-voice-bridge`; it is marked `"private": true` and not on npm yet, so install it from git or a packed tarball (below). Current version: **0.4.0** (protocol v1, revision 3; see [CHANGELOG.md](CHANGELOG.md)).
 
 ## The whole loop in one command
 
@@ -134,7 +134,7 @@ Until then, pack it and install the tarball:
 
 ```bash
 npm pack --pack-destination ../my-app/vendor     # in this repo; builds first
-cd ../my-app && npm install ./vendor/tv-voice-bridge-0.3.5.tgz
+cd ../my-app && npm install ./vendor/tv-voice-bridge-0.4.0.tgz
 ```
 
 For a live link while you edit the bridge (changes show up without re-packing), use `npm link`:

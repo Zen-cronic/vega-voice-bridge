@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.4.0 (2026-10-20)
+
+The wire protocol is still v1, revision 3: no message or field changed, and 0.3 clients and hubs work with 0.4 ones both ways. The minor bump is for hub behaviour that changed by default (under "Changed").
+
+### Changed
+- **`handler-failed` no longer carries the exception text.** The room gets `handler failed`; the text, the room code and the `utteranceId` go to the hub's `log`. `exposeHandlerErrors: true` sends the text, capped at 2,000 characters, for development. Before, a failing `onFinal` or tracked `onApp` sent its exception text to every peer in the room, uncapped; past 2,000 characters clients refused the frame, so the error never arrived.
+- **The CLI hub checks `Origin`.** It accepts WebSockets from pages it served itself (its own address, `--public-url`, `--join-url`) and from clients that send no `Origin` (TV apps, Node); a page on another site gets 403. `--origin <origin>` adds a site, and `--any-origin` turns the check off. It prints the policy at startup and each refused origin once.
+- **IPv6 rate keys are the client's /64**, so one host cannot get a fresh hello and wrong-code budget from every address in its prefix (`ipv6RateKeyPrefix`, default 64; 128 keys each address on its own).
+- **Pairing pauses when wrong codes pass a hub-wide budget** (below).
+
+### Added
+- **Hub, a hub-wide wrong-code budget:** `limits.hubCodeMisses` (default 100) per `limits.hubCodeMissWindowMs` (default 10 minutes), counting the misses the per-key budget counts, with one rate key counting for at most a tenth. Past it, every hello that names a code is refused with `rate-limited` until the window ends, the right code too, so a refusal tells a guesser nothing. Still admitted: connected peers, a peer resuming into its own room with the `clientId`, role and `resumeToken` it joined with, and a screen asking for a fresh code. `hub.stats.pairingPauses` counts the pauses.
+- **Hub, an Origin allow-list:** `allowedOrigins` (exact origins, or a function), off by default in the library. A refused upgrade gets 403 before the handshake; an upgrade with no `Origin` always passes; a policy that throws refuses. `localOriginPolicy(extra)` is the CLI's policy, `normalizeOrigin()` the comparison, and `hub.stats.originRefused` the count. The `join` log event carries the `Origin` a peer connected with.
+- **Hub:** `rateKeyBucket(key, prefix)`, `HANDLER_FAILED_MESSAGE`.
+- **`./phone`:** `voiceSupport()` says whether a page can listen and, if not, why (`insecure-context`, `no-support`) and what to do: the hub's https link, Chrome's per-device developer flag with the page's origin filled in, or `localhost` on the hub's computer. Browsers with no recognizer are told which one to use.
+- **The phone page** says why voice is off over plain http and lists those fixes, disables the mic controls and keeps typing. Opened without a code (`/p/`), it asks for one; the CLI hub sends `/` and `/p` there.
+- **The web TV example** draws the pairing QR with `./qr`.
+- **`examples/vega-voice-loop`:**
+  - `RESPOND_CMD`: any command as the agent. It gets the transcript on stdin and in `$TEXT` and the room's last turns in `$HISTORY_FILE`, and prints the reply. After 8 s, a non-zero exit or no output, the TV still shows and says "Sorry, I didn't catch that." (`ok: false`), and the reason goes only to the hub's log.
+  - `agents/bedrock.mjs`: a ready command for Amazon Bedrock (one Converse call per utterance through the AWS CLI).
+  - `startVoiceLoop()` is exported; each loop line gains `agentMs`, and each join logs the peer's `Origin`.
+  - The scripted phone takes `--n` and `--gap`.
+- **`docs/https.md`:** four ways to get voice on the phone (Chrome's developer flag, an https tunnel, a local CA for an iPhone, localhost).
+- **CI** on GitHub Actions: Node 20, 22 and 24 (typecheck, test, build, the loop from `dist/`, `npm pack --dry-run`), and the Vega example type-checked against the real `@amazon-devices/react-native-kepler` and `react-native-w3cmedia` packages with the packed tarball.
+- **Releases:** a `v*` tag builds, tests and packs, then attaches the tarball and its SHA-256 to a GitHub release with this section as the notes. It never publishes to npm ([docs/releasing.md](docs/releasing.md)).
+- `package.json`: `repository`, `homepage` and `bugs`.
+
+### Fixed
+- **`npm run example` on Node 20:** the loop example used the global `WebSocket`, which Node 20 lacks; it falls back to `ws`.
+- **Hub:** every error message it sends is capped at the protocol's 2,000-character limit.
+
 ## 0.3.5 (2026-10-20)
 
 The wire protocol is unchanged (v1, revision 3). The package's code is unchanged; only the example below is.
