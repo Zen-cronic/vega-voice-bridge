@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 // @ts-expect-error: a plain .mjs example module
-import { createTts, ttsEngine } from '../examples/vega-voice-loop/tts.mjs';
+import { createTts, sweepWorkFiles, ttsEngine } from '../examples/vega-voice-loop/tts.mjs';
 
 type Call = { cmd: string; args: string[]; env?: Record<string, string> };
 const recorder = () => {
@@ -133,5 +133,76 @@ describe('the voice loop text-to-speech', () => {
     expect(bases).toHaveLength(3);
     expect(new Set(bases).size).toBe(3);
     for (const base of bases) expect(base).not.toBe(join(dir, ra.id));
+  });
+
+  const wavEngine = { name: 'espeak', outputs: (b: string) => [`${b}.wav`], render: async (_t: string, base: string) => (writeFileSync(`${base}.wav`, 'x'), `${base}.wav`) };
+  const DEAD = 99999999; // above any pid_max, so never a live process
+
+  it('sweeps the work files a killed process left, and keeps those of a live one', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tts-'));
+    dirs.push(dir);
+    const id = 'a'.repeat(16);
+    const stale = [`${id}.${DEAD}-1.m4a`, `${id}.${DEAD}-1.wav`, `${id}.${DEAD}-0badf00d-3.polly.txt`, `${id}.${process.pid}-0badf00d-2.mp3`, `${id}.${process.pid}-7.m4a`];
+    const keep = [`${id}.${process.ppid}-cafe0123-1.m4a`, `${id}.m4a`, `${id}.mp3`, 'notes.txt'];
+    for (const f of [...stale, ...keep]) writeFileSync(join(dir, f), 'x');
+    createTts({ dir, engine: wavEngine, run: encoder() });
+    expect(readdirSync(dir).sort()).toEqual([...keep].sort());
+    expect(sweepWorkFiles(join(dir, 'gone'))).toBe(0);
+  });
+
+  it('close() stops the renders in flight and removes their files (the hub calls it on SIGINT and SIGTERM)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tts-'));
+    dirs.push(dir);
+    // Stands in for an encoder that runs until it is stopped: it has written part of its output.
+    const run = (_cmd: string, args: string[], _env: unknown, o: { signal?: AbortSignal } = {}) =>
+      new Promise<void>((_res, rej) => {
+        writeFileSync(args.at(-1)!, 'partial');
+        o.signal?.addEventListener('abort', () => rej(new Error('ffmpeg: aborted')));
+      });
+    const tts = createTts({ dir, engine: wavEngine, run });
+    const p = tts.clip('Long reply.');
+    await new Promise((r) => setTimeout(r, 10));
+    expect(readdirSync(dir).length).toBeGreaterThan(0);
+    await tts.close();
+    await expect(p).rejects.toThrow(/aborted/);
+    expect(readdirSync(dir)).toEqual([]);
+    await expect(tts.clip('Another.')).rejects.toThrow(/closed/);
+    // a command that ignores the signal: close() stops waiting after waitMs and removes the files anyway
+    const deaf = createTts({ dir, engine: wavEngine, run: (_c: string, args: string[]) => new Promise<void>(() => writeFileSync(args.at(-1)!, 'partial')) });
+    void deaf.clip('Stuck reply.');
+    await new Promise((r) => setTimeout(r, 10));
+    expect(readdirSync(dir).length).toBeGreaterThan(0);
+    await deaf.close({ waitMs: 20 });
+    expect(readdirSync(dir)).toEqual([]);
+  });
+
+  it('two instances on one dir never share work files', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tts-'));
+    dirs.push(dir);
+    const bases: string[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((res) => (release = res));
+    const engine = { ...wavEngine, render: async (t: string, base: string) => (bases.push(base), await gate, wavEngine.render(t, base)) };
+    const a = createTts({ dir, engine, run: encoder() }).clip('Same.');
+    const b = createTts({ dir, engine, run: encoder() }).clip('Same.');
+    release();
+    expect((await Promise.allSettled([a, b])).map((r) => r.status)).toEqual(['fulfilled', 'fulfilled']);
+    expect(new Set(bases).size).toBe(2);
+    expect(readdirSync(dir).sort()).toEqual([`${(await a).id}.m4a`, `${(await a).id}.mp3`]);
+  });
+
+  it("a render's cleanup removes only its own files and never hides the render's error", async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tts-'));
+    dirs.push(dir);
+    const other = `${'b'.repeat(16)}.${process.pid}-feedface-1.wav`; // looks like a work file, not this render's
+    // the cache dir is removed while the engine runs, then the engine fails
+    const engine = { ...wavEngine, render: async () => (rmSync(dir, { recursive: true, force: true }), Promise.reject(new Error('espeak: no voice'))) };
+    await expect(createTts({ dir, engine, run: encoder() }).clip('Gone.')).rejects.toThrow(/no voice/);
+    const dir2 = mkdtempSync(join(tmpdir(), 'tts-'));
+    dirs.push(dir2);
+    const tts = createTts({ dir: dir2, engine: wavEngine, run: encoder() });
+    writeFileSync(join(dir2, other), 'x');
+    await tts.clip('Mine.');
+    expect(readdirSync(dir2)).toContain(other);
   });
 });

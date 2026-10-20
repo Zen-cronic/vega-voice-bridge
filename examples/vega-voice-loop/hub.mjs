@@ -88,3 +88,10 @@ const hub = new BridgeHub({
   },
 });
 server.listen(port, () => console.log(JSON.stringify({ event: 'ready', port, tts: tts.engine, publicUrl })));
+
+// Ctrl-C or a stop: end the renders in flight and remove their work files before exiting.
+for (const [sig, code] of [['SIGINT', 130], ['SIGTERM', 143]])
+  process.once(sig, () => {
+    server.close();
+    void tts.close().finally(() => process.exit(code));
+  });
