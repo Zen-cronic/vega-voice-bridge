@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.4
+
+The wire protocol is unchanged (v1, revision 3). The package's code is unchanged; only the example below is.
+
+### Fixed
+- **`examples/vega-voice-loop`:** a clip is encoded into work files and moved into place only after both the MP4 and the MP3 succeeded, and it counts as cached only when both exist. An encode that failed or was killed partway used to leave a partial `.m4a` that later replies were served from; a failed render also left its work file behind.
+
 ## 0.3.3
 
 The wire protocol is unchanged (v1, revision 3).
