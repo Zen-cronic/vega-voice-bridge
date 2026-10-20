@@ -29,14 +29,37 @@ vega run-app build/x86_64-release/voiceloop_x86_64.vpkg com.tvvoicebridge.loop.m
 node examples/vega-voice-loop/phone.mjs <CODE>
 ```
 
-The QR opens the phone page this hub serves, at this machine's LAN address (`--public-url` overrides it). Browsers allow the microphone only on https or localhost, so over plain http the page offers typing; for voice, put the hub behind an https tunnel and pass its URL as `--public-url`.
+The QR opens the phone page this hub serves, at this machine's LAN address (`--public-url` overrides it). Browsers allow speech recognition only on https or localhost, so over plain http the page says so and offers typing; [docs/https.md](../../docs/https.md) has the ways to turn voice on (a tunnel with `--public-url`, or Chrome's developer flag on your own Android phone).
 
 On a Fire TV Stick, set `npm run hub -- <LAN IP>:8790` before building, and install the `armv7` or `aarch64` package.
 
 ## What to change
 
-- **The agent:** `respond(text)` in `hub.mjs`. Rules, an LLM or an MCP tool; it returns what the TV says.
+- **The agent:** offline rules by default ([`respond.mjs`](respond.mjs)). Set `RESPOND_CMD` to any command to answer with your own agent; see [Your agent](#your-agent-respond_cmd) below.
 - **The voice:** `tts.mjs` uses macOS `say` (`TTS_VOICE=<voice>`) or Linux `espeak`, or any command that writes a WAV: `TTS_CMD='my-tts "$TEXT" > "$OUT"'`. For a natural cloud voice, `TTS_ENGINE=polly` calls Amazon Polly through the AWS CLI with its usual credentials (`AWS_PROFILE`): `POLLY_VOICE` (default `Ruth`), `POLLY_ENGINE` (default `generative`) and `AWS_REGION` (default `us-east-1`; not every engine is offered in every region). A clip is made once per reply text and cached. Clips are encoded as fragmented MP4/AAC, the format Vega's media player plays from a plain-http hub (raw MP3 does not).
+
+## Your agent (`RESPOND_CMD`)
+
+```bash
+RESPOND_CMD='<command>' node examples/vega-voice-loop/hub.mjs
+```
+
+- **The contract.** The command gets the transcript on stdin and in `$TEXT`, and the room's last six turns in `$HISTORY_FILE`: a JSON array of `{"role": "user" | "assistant", "content": "..."}`, readable only by you and removed after the call. It prints the reply on stdout. The hub cleans it for speech (one line, no terminal colour codes, at most 600 characters).
+- **When it fails.** A non-zero exit, no output, or more than 8 seconds (the command and whatever it started are stopped): the TV still shows and says "Sorry, I didn't catch that.", and the intent has `ok: false`. The reason goes to the hub's log as `{"event":"respond-error",...}`, never to the phone or the TV.
+- **What is timed.** The hub's `loop` line gains `agentMs` (transcript in, reply out), next to `ttsMs`. On the wire it is the `hub.recv → hub.intent` leg.
+
+Two commands to start from. Neither is run by this repo's tests, which use stand-ins:
+
+- **Amazon Bedrock** through the AWS CLI ([`agents/bedrock.mjs`](agents/bedrock.mjs)): one Converse call per utterance, with the history. It uses the CLI's usual credentials, and each call is billed to that account.
+
+  ```bash
+  RESPOND_CMD='node examples/vega-voice-loop/agents/bedrock.mjs' AWS_PROFILE=<your profile> node examples/vega-voice-loop/hub.mjs
+  ```
+
+  `BEDROCK_MODEL` defaults to `us.amazon.nova-lite-v1:0` (a cross-Region inference profile; the account needs access to the model in that Region), `AWS_REGION` to `us-east-1`, and `BEDROCK_MAX_TOKENS` to 160. The transcript reaches the CLI in a file, never as an argument value.
+- **A local model** with Ollama (not tested here): `RESPOND_CMD='ollama run llama3.2 "Answer in one short spoken sentence: $TEXT"'`.
+
+To make exactly one call, with the TV showing its code, send one scripted line: `node examples/vega-voice-loop/phone.mjs <CODE> --n 1`.
 
 ## What is measured
 
@@ -47,5 +70,7 @@ All in hub clock, per utterance:
 | speech end → shown | the phone's `speech.end` → the TV's `screen.render` (after the frame that shows the answer) |
 | say → playing | the hub sending `screen.say` → the TV reporting `playing` (sound started) |
 | speech end → heard | the phone's `speech.end` → the TV reporting `playing` |
+
+The hub prints each loop as a JSON line, `{"event":"loop","said":...,"shownMs":...,"agentMs":...,"ttsMs":...,"sayToPlayingMs":...,"heardMs":...,"replyMs":...,"state":...}`, and each join with the `Origin` header the peer connected with (`null` for the Vega app and other native clients).
 
 The scripted phone stamps `speech.end` when it sends the final, so a real phone adds its recognizer's tail. Measured on the Vega Virtual Device (SDK 0.24), 4 utterances: shown 11–46 ms, say → playing 72–175 ms, speech end → heard 217–322 ms.
