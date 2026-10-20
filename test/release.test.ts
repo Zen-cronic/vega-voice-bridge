@@ -21,8 +21,10 @@ describe('releases', () => {
     }
   });
 
-  it('CHANGELOG.md opens with the package version, dated, and the release notes script finds it', () => {
+  it('CHANGELOG.md opens with the package version, dated (after an optional Unreleased section), and the release notes script finds it', () => {
     const changelog = read('CHANGELOG.md');
+    const headings = [...changelog.matchAll(/^## (.+)$/gm)].map((m) => m[1]!);
+    expect(headings.slice(0, 2).filter((h) => h !== 'Unreleased')[0]).toMatch(/^\S+ \(\d{4}-\d{2}-\d{2}\)$/);
     const first = /^## (\S+) \((\d{4}-\d{2}-\d{2})\)$/m.exec(changelog);
     expect(first?.[1]).toBe(pkg.version);
     const notes = releaseNotes(changelog, pkg.version) as string;

@@ -9,10 +9,12 @@ This is the wire contract between a **hub** and its clients: **screens** (TV app
 
 **Status:** protocol version `1`, revision 3. Packages 0.3.x and 0.4.x implement revision 3, 0.2.0 implemented revision 2, and 0.1.0 revision 1. All three revisions interoperate in both directions (see [Revision history](#revision-history)).
 
-**Reference tests.** These suites pin the protocol down. Today they run in-process against this repo's TypeScript hub and client; a mode that runs the black-box hub cases against any hub URL is planned. A second implementation (another language or another TV platform) is conformant when it behaves as these cases require:
+**Reference tests.** These suites pin the protocol down. A second implementation (another language or another TV platform) is conformant when it behaves as these cases require:
 
 | File | What it pins down | Required of |
 |---|---|---|
+| [`test/vectors/wire.json`](test/vectors/wire.json) | Wire vectors as plain JSON, for any language: messages a decoder must accept unchanged, frames it must refuse (with the field the error names), and frames it must normalize | decoders (hubs and clients) |
+| [`test/hub-conformance.test.ts`](test/hub-conformance.test.ts) | The hub over raw WebSockets: refusals, version, pairing and code normalization, routing and hop order, the reply's `screen.say` and `screen.speech`, the echo guard relays, role rules, `id-in-use`. `TVB_HUB_URL=ws://host:port/ws npm run conformance` runs it against any running hub that answers each final with an intent and a `screen.say` line (as `tv-voice-bridge-hub --echo` does); CI runs it against a separate hub process | hubs |
 | [`test/conformance.test.ts`](test/conformance.test.ts) | Wire vectors for every message type, field validation, black-box hub behaviour over raw sockets (refusals, pairing, identity, role rules), routing, hop order, `screen.say`, and the echo guard relays (`screen.speech`, `screen.say.stop`) | hubs and clients |
 | [`test/robustness.test.ts`](test/robustness.test.ts) | The hub survives malformed frames, bad upgrades and throwing handlers; room lifetime; pairing, rate and size limits; heartbeat; backpressure | hubs |
 | [`test/client.test.ts`](test/client.test.ts) | Reconnect with backoff, recovery after a hub restart, re-pair, heartbeat on links that never report closing, split-frame reassembly | clients |
@@ -184,7 +186,7 @@ The phone's microphone and the TV's speaker are in the same room, so a phone tha
   - adding a message type that existing receivers must understand.
 
   Clients ignore unknown types and the hub answers `bad-message` to them, so a new client-to-hub type needs v2.
-- Every change adds or updates a vector in `test/conformance.test.ts` in the same commit.
+- Every change adds or updates a vector in `test/vectors/wire.json` or `test/conformance.test.ts` (and, for hub behaviour, a case in `test/hub-conformance.test.ts`) in the same commit.
 - The package version is separate from the protocol version. A package minor bump (0.x) may tighten behaviour within the same protocol version, and the CHANGELOG says how.
 
 ## Revision history

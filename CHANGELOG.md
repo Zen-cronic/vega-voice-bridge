@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **A portable conformance kit.** The wire vectors are plain JSON in `test/vectors/wire.json` (messages to accept unchanged, frames to refuse with the field named, frames to normalize), read by `test/conformance.test.ts` and usable from any language. `test/hub-conformance.test.ts` is the hub's side over raw WebSockets; `npm test` runs it against this repo's CLI hub, `TVB_HUB_URL=ws://host:port/ws npm run conformance` against any running hub with an echo responder, and CI against a separate hub process.
+
 ## 0.4.0 (2026-10-20)
 
 The wire protocol is still v1, revision 3: no message or field changed, and 0.3 clients and hubs work with 0.4 ones both ways. The minor bump is for hub behaviour that changed by default (under "Changed").

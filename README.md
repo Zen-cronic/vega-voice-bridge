@@ -355,7 +355,7 @@ To keep a `clientId` across page reloads, persist **both** `client.clientId` and
 
 ## Protocol
 
-[PROTOCOL.md](PROTOCOL.md) is the spec. It covers framing, every message with field limits, who may send what, routing, pairing and room lifetime, identity, liveness, errors, hub-clock hops, `screen.say`, the echo guard relays, backpressure, and the versioning rules. Version `1` has three revisions, which interoperate both ways. In short:
+[PROTOCOL.md](PROTOCOL.md) is the spec, with portable wire vectors in [`test/vectors/wire.json`](test/vectors/wire.json) and a black-box suite any hub can run (`TVB_HUB_URL=ws://host:port/ws npm run conformance`). It covers framing, every message with field limits, who may send what, routing, pairing and room lifetime, identity, liveness, errors, hub-clock hops, `screen.say`, the echo guard relays, backpressure, and the versioning rules. Version `1` has three revisions, which interoperate both ways. In short:
 
 | `type` | Direction | Notes |
 |---|---|---|
@@ -396,6 +396,7 @@ A pairing code is 4 characters from a 31-character alphabet (923,521 codes). Any
 
 `npm test` runs every suite with vitest, offline (no device, network or keys), and CI runs it on Node 20, 22 and 24 on every push.
 
+- **Hub conformance, against any hub** (`test/hub-conformance.test.ts`): the black-box cases a second hub must pass, over raw WebSockets. `npm test` runs them against this repo's CLI hub; `TVB_HUB_URL=ws://host:port/ws npm run conformance` runs them against any running hub, and CI runs them against a separate hub process. The wire vectors are plain JSON in `test/vectors/wire.json`.
 - **Protocol conformance** (`test/conformance.test.ts`), the reference for second implementations: wire vectors for every message type; field-level validation; the hub as a black box over raw sockets (refusals, version, pairing, code normalization, `id-in-use`, 0.1 compatibility, role rules, handler failure); routing, hop order and `screen.say`; the echo guard relays.
 - **Hub robustness** (`test/robustness.test.ts`): every input that crashed the 0.1.0 hub (non-string `code`, invalid UTF-8, a reserved opcode, an oversized frame, a bad upgrade target, throwing callbacks), room lifetime, collision-free codes, brute-force limits per key and hub-wide (and resuming through a pause), IPv6 /64 keys, the Origin allow-list, generic `handler-failed`, capacity, dead-holder takeover, heartbeat and backpressure.
 - **Client resilience** (`test/client.test.ts`): backoff, split-frame reassembly, dead links without `onclose`, connect timeout, timer hygiene, clock-offset reset, and real hub restarts (re-join and re-pair).

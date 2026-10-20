@@ -12,7 +12,8 @@ CI runs the same on Node 20, 22 and 24, and type-checks the Vega example against
 ## Rules that keep the bridge interoperable
 
 - **The wire protocol stays compatible within v1.** [PROTOCOL.md](PROTOCOL.md#12-versioning-rules) lists what a revision may add (optional fields, error codes, `app` topics, hub-side limits) and what needs v2.
-- **Every protocol change comes with a vector.** Add or update a case in `test/conformance.test.ts` in the same commit: a new message, field, topic, error code or routing rule.
+- **Every protocol change comes with a vector.** Add or update a case in `test/vectors/wire.json` (wire format) or `test/conformance.test.ts`, and for hub behaviour in `test/hub-conformance.test.ts`, in the same commit: a new message, field, topic, error code or routing rule.
+- **Another hub?** `TVB_HUB_URL=ws://host:port/ws npm run conformance` runs the black-box hub suite against it.
 - **The hub never throws out of a frame, an upgrade or an app callback.** A new input path gets a case in `test/robustness.test.ts`.
 - **A fix comes with a test that fails without it.**
 - **No network in tests.** No test may call a model, a cloud API or a real device. The test run blanks AWS credentials; stand-ins replace the AWS CLI, the speech recognizer and the Vega media player.
