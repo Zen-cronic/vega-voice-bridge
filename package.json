@@ -2,9 +2,17 @@
   "name": "tv-voice-bridge",
   "version": "0.3.5",
   "private": true,
-  "description": "A voice back-and-forth harness for TV apps and agents: the phone listens, your app or agent answers, the TV shows it and says it, and playback is confirmed. A small WebSocket protocol, a hub and a client with per-hop latency stamps. Built for Fire TV (Vega OS), which has no app-level speech-to-text API.",
+  "description": "Two-way voice for Fire TV (Vega) apps and AI agents: the phone listens, your agent answers, the TV shows it and says it. Echo guard, barge-in, every hop timed. No phone app.",
   "license": "MIT",
   "author": "Kaung Zin Hein",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Zen-cronic/tv-voice-bridge.git"
+  },
+  "homepage": "https://github.com/Zen-cronic/tv-voice-bridge#readme",
+  "bugs": {
+    "url": "https://github.com/Zen-cronic/tv-voice-bridge/issues"
+  },
   "type": "module",
   "sideEffects": false,
   "main": "./dist/index.js",
@@ -96,10 +104,10 @@
     "speech"
   ],
   "peerDependencies": {
+    "@amazon-devices/react-native-w3cmedia": ">=2",
     "react": ">=18",
     "react-native": "*",
-    "ws": "^8",
-    "@amazon-devices/react-native-w3cmedia": ">=2"
+    "ws": "^8"
   },
   "peerDependenciesMeta": {
     "react": {
