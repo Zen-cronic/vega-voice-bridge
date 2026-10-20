@@ -78,6 +78,7 @@ export async function startVoiceLoop({ port = 8790, host, publicUrl, responder =
       if (['ended', 'error', 'no-audio', 'interrupted'].includes(p.state)) {
         loops.delete(p.id);
         const row = {
+          sayId: p.id,
           said: l.text,
           shownMs: l.shownMs ?? null,
           agentMs: Math.round(l.replied - l.hubRecv),

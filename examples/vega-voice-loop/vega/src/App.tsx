@@ -6,10 +6,15 @@ import {PairingQr, useVoiceBridge} from 'tv-voice-bridge/react';
 import {createVegaSayPlayer} from 'tv-voice-bridge/vega';
 import hub from './hub.json';
 
-type Row = {said: string; shownMs: number | null; sayToPlayingMs: number | null; heardMs: number | null};
+type Row = {sayId?: string; said: string; shownMs: number | null; sayToPlayingMs: number | null; heardMs: number | null};
 
 export function App() {
-  const player = useMemo(() => createVegaSayPlayer({baseUrl: `http://${hub.hostport}`}), []);
+  // hub.json "httpUrlMode": true plays http clips in URL mode instead of MSE: the stick run's check of whether the
+  // OS now allows cleartext media (scripts/stick-run.md). Leave it off otherwise.
+  const player = useMemo(
+    () => createVegaSayPlayer({baseUrl: `http://${hub.hostport}`, httpUrlMode: (hub as {httpUrlMode?: boolean}).httpUrlMode === true}),
+    [],
+  );
   useEffect(() => {
     void player.warm(); // the first reply is not delayed by the media player's start-up
     return () => void player.dispose();
@@ -22,6 +27,11 @@ export function App() {
   );
 
   const answer = (tv.intent?.payload as {reply?: string} | undefined)?.reply;
+  // The hub sends a row when the reply has finished playing; until then the current utterance shows as pending.
+  const heard = tv.final;
+  const pending: Row | null =
+    heard && rows[0]?.sayId !== `say_${heard.utteranceId}` ? {said: heard.text, shownMs: null, sayToPlayingMs: null, heardMs: null} : null;
+  const shown = pending ? [pending, ...rows].slice(0, 5) : rows;
   const audio = tv.saying?.state ?? 'idle';
   const ms = (n: number | null | undefined) => (n == null ? '–' : `${Math.round(n)} ms`);
   return (
@@ -46,12 +56,12 @@ export function App() {
             <Text key={h} style={[s.td, s.th]}>{h}</Text>
           ))}
         </View>
-        {rows.map((r, i) => (
+        {shown.map((r, i) => (
           <View key={i} style={s.tr}>
             <Text style={s.td} numberOfLines={1}>{r.said}</Text>
-            <Text style={s.td}>{ms(r.shownMs)}</Text>
-            <Text style={s.td}>{ms(r.sayToPlayingMs)}</Text>
-            <Text style={s.td}>{ms(r.heardMs)}</Text>
+            <Text style={s.td}>{r === pending ? '…' : ms(r.shownMs)}</Text>
+            <Text style={s.td}>{r === pending ? '…' : ms(r.sayToPlayingMs)}</Text>
+            <Text style={s.td}>{r === pending ? '…' : ms(r.heardMs)}</Text>
           </View>
         ))}
       </View>
