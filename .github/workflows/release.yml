@@ -1,0 +1,46 @@
+name: Release
+
+# Pushing a tag vX.Y.Z builds, tests and packs that commit, and attaches the tarball to a GitHub release with the
+# CHANGELOG section as its notes. It never publishes to npm: that is a manual decision for the maintainer
+# (docs/releasing.md), and package.json stays "private": true until it is made.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: The tag matches package.json
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then echo "tag $GITHUB_REF_NAME does not match package.json $version"; exit 1; fi
+      - name: Install
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Test
+        run: npm test
+      - name: Build and pack
+        run: npm pack
+      - name: Checksum and release notes
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          sha256sum "tv-voice-bridge-$version.tgz" > SHA256SUMS
+          node scripts/release-notes.mjs "$version" > release-notes.md
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          gh release create "$GITHUB_REF_NAME" "tv-voice-bridge-$version.tgz" SHA256SUMS \
+            --verify-tag --title "tv-voice-bridge $version" --notes-file release-notes.md

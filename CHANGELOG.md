@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.5
+## 0.3.5 (2026-10-20)
 
 The wire protocol is unchanged (v1, revision 3). The package's code is unchanged; only the example below is.
 
@@ -10,14 +10,14 @@ The wire protocol is unchanged (v1, revision 3). The package's code is unchanged
 - **`examples/vega-voice-loop`:** work files are named per instance, so two `createTts` on one directory no longer remove each other's files.
 - **`examples/vega-voice-loop`:** a render removes its own files by name instead of listing the whole cache, and a failed removal no longer replaces the render's own error (a cache directory removed while the hub ran used to report `ENOENT` instead of the engine's failure).
 
-## 0.3.4
+## 0.3.4 (2026-10-20)
 
 The wire protocol is unchanged (v1, revision 3). The package's code is unchanged; only the example below is.
 
 ### Fixed
 - **`examples/vega-voice-loop`:** a clip is encoded into work files and moved into place only after both the MP4 and the MP3 succeeded, and it counts as cached only when both exist. An encode that failed or was killed partway used to leave a partial `.m4a` that later replies were served from; a failed render also left its work file behind.
 
-## 0.3.3
+## 0.3.3 (2026-10-19)
 
 The wire protocol is unchanged (v1, revision 3).
 
@@ -31,7 +31,7 @@ The wire protocol is unchanged (v1, revision 3).
 ### Added
 - **`./hub`:** `forwardedClientKey({ proxies, hops, trusted })`, a ready `rateKey` that checks the proxy list once, when it is built. `forwardedClient` takes a prebuilt `trusted` matcher too.
 
-## 0.3.2
+## 0.3.2 (2026-10-19)
 
 The wire protocol is unchanged (v1, revision 3).
 
@@ -48,7 +48,7 @@ The wire protocol is unchanged (v1, revision 3).
 - **`./hub`:** `proxyMatcher(proxies)`, the trusted-proxy test `forwardedClient` uses (loopback, addresses and CIDR ranges).
 - **`examples/vega-voice-loop`:** an optional Amazon Polly voice (`TTS_ENGINE=polly`, generative Ruth in us-east-1 by default) through the AWS CLI; local voices stay the default.
 
-## 0.3.1
+## 0.3.1 (2026-10-19)
 
 The wire protocol is unchanged (v1, revision 3).
 
@@ -65,7 +65,7 @@ The wire protocol is unchanged (v1, revision 3).
 - **`./phone`:** in continuous mode, a restart whose `recognizer.start()` throws is retried with backoff and stops the mic with a fatal error after three in a row; the mic used to stay `starting` and never listen again. A `start()` call that throws returns false.
 - **Client reassembly:** each piece of a split message is scanned once, so a large message in many small pieces costs about what it costs in a few (a 900 KiB message in 1 KiB pieces went from about a second to under 10 ms on a desktop).
 
-## 0.3.0
+## 0.3.0 (2026-10-19)
 
 The wire protocol is still **v1**. Everything below is additive.
 
