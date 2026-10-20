@@ -43,6 +43,31 @@ jobs:
       - name: Package contents
         run: npm pack --dry-run
 
+  conformance:
+    # The black-box hub suite run against a separate hub process, the way a second implementation would run it:
+    # TVB_HUB_URL=ws://host:port/ws npm run conformance.
+    name: Conformance against a running hub
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install
+        run: npm ci --no-audit --no-fund
+      - name: Start the CLI hub with --echo
+        run: |
+          node dist/cli.js --port 18790 --host 127.0.0.1 --echo --quiet > hub.log 2>&1 &
+          for i in $(seq 1 50); do curl -fs http://127.0.0.1:18790/healthz && break; sleep 0.2; done
+      - name: Run the suite against it
+        run: npm run conformance
+        env:
+          TVB_HUB_URL: ws://127.0.0.1:18790/ws
+      - name: The hub's output
+        if: always()
+        run: cat hub.log
+
   vega-example:
     # The Vega voice-loop app type-checked against the real, public React Native for Vega packages
     # (@amazon-devices/react-native-kepler, @amazon-devices/react-native-w3cmedia), not the test stand-ins,
