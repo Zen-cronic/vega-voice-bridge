@@ -7,7 +7,7 @@ import { createServer, request, type Server } from 'node:http';
 import net, { type Socket } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
-import { BridgeHub, rateKeyBucket, type HubOptions } from '../src/hub.js';
+import { BridgeHub, localOriginPolicy, rateKeyBucket, type HubOptions } from '../src/hub.js';
 import { BridgeClient, FIELD_LIMITS, decode, type BridgeMessage } from '../src/index.js';
 
 type Raw = { ws: WebSocket; send: (m: unknown) => void; next: (type?: string) => Promise<BridgeMessage>; closed: Promise<number>; inbox: BridgeMessage[] };
@@ -522,5 +522,89 @@ describe('liveness and backpressure', () => {
     expect(hub.stats.backpressureCloses).toBeGreaterThanOrEqual(1);
     for (let i = 0; i < 50 && !left.length; i++) await sleep(10);
     expect(left).toEqual(['tv']);
+  });
+});
+
+/** Open a socket with this Origin header (or none); resolves 'open' or the HTTP status of a refused upgrade. */
+function upgradeWith(url: string, origin?: string, host?: string): Promise<'open' | number> {
+  return new Promise((resolve) => {
+    const headers: Record<string, string> = {};
+    if (origin !== undefined) headers.origin = origin;
+    if (host !== undefined) headers.host = host;
+    const ws = new WebSocket(url, { headers });
+    cleanups.push(() => ws.terminate());
+    ws.on('open', () => resolve('open'));
+    ws.on('unexpected-response', (_req, res) => resolve(res.statusCode ?? 0));
+    ws.on('error', () => undefined);
+  });
+}
+
+describe('allowedOrigins: which web pages may connect', () => {
+  it('by default any Origin connects (unchanged); the join log records the Origin a peer connected with', async () => {
+    const joins: Array<Record<string, unknown> | undefined> = [];
+    const { url, hub } = await start({ log: (event, data) => event === 'join' && joins.push(data) });
+    expect(await upgradeWith(url, 'https://evil.example')).toBe('open');
+    expect(hub.stats.originRefused).toBe(0);
+    const ws = new WebSocket(url, { headers: { origin: 'https://tv.example' } });
+    cleanups.push(() => ws.terminate());
+    await new Promise((r) => ws.once('open', r));
+    ws.send(JSON.stringify({ type: 'hello', v: 1, role: 'screen', clientId: 'tv_o' }));
+    await screen(url, 'tv_native');
+    await sleep(30);
+    expect(joins.map((j) => [j?.clientId, j?.origin])).toEqual([
+      ['tv_o', 'https://tv.example'],
+      ['tv_native', undefined],
+    ]);
+  });
+
+  it('a list admits exactly those origins, refuses others with 403, and never refuses a client that sends no Origin', async () => {
+    const logs: Array<{ event: string; data?: Record<string, unknown> }> = [];
+    const { url, hub } = await start({ allowedOrigins: ['https://app.example', 'http://192.168.1.20:8790'], log: (event, data) => logs.push({ event, data }) });
+    expect(await upgradeWith(url, 'https://app.example')).toBe('open');
+    expect(await upgradeWith(url, 'HTTPS://APP.EXAMPLE')).toBe('open'); // compared as browsers serialize it
+    expect(await upgradeWith(url, 'http://192.168.1.20:8790')).toBe('open');
+    expect(await upgradeWith(url)).toBe('open'); // a native TV app, Node, curl
+    for (const bad of ['https://evil.example', 'https://app.example.evil.example', 'http://app.example', 'null', 'not an origin', 'http://192.168.1.20:8791'])
+      expect(await upgradeWith(url, bad), bad).toBe(403);
+    expect(hub.stats.originRefused).toBe(6);
+    expect(logs.filter((l) => l.event === 'origin-refused').map((l) => l.data?.origin)).toContain('https://evil.example');
+    await alive(url);
+  });
+
+  it('a function decides; one that throws refuses (the safe side) and the hub keeps serving', async () => {
+    const { url } = await start({ allowedOrigins: (origin) => origin.endsWith('.example') });
+    expect(await upgradeWith(url, 'https://tv.example')).toBe('open');
+    expect(await upgradeWith(url, 'https://tv.invalid')).toBe(403);
+    const throwing = await start({
+      allowedOrigins: () => {
+        throw new Error('policy bug');
+      },
+    });
+    expect(await upgradeWith(throwing.url, 'https://tv.example')).toBe(403);
+    await alive(throwing.url);
+  });
+
+  it('a list entry that is not an http(s) origin throws when the hub is built, so a typo does not admit nothing', () => {
+    const server = createServer();
+    for (const bad of ['app.example', 'ftp://app.example', 'https://app.example/path'])
+      expect(() => new BridgeHub({ server, allowedOrigins: [bad] }), bad).toThrow(/not an http\(s\) origin/);
+  });
+
+  it('localOriginPolicy: pages this hub served (same host, by address or a local name), plus the listed origins; never a public name (DNS rebinding)', () => {
+    const req = (host: string) => ({ headers: { host } }) as unknown as import('node:http').IncomingMessage;
+    const policy = localOriginPolicy(['https://tv.example']);
+    expect(policy('http://192.168.1.20:8790', req('192.168.1.20:8790'))).toBe(true);
+    expect(policy('http://127.0.0.1:8790', req('127.0.0.1:8790'))).toBe(true);
+    expect(policy('http://localhost:8790', req('localhost:8790'))).toBe(true);
+    expect(policy('http://[::1]:8790', req('[::1]:8790'))).toBe(true);
+    expect(policy('http://[fd00::7]:8790', req('[fd00::7]:8790'))).toBe(true);
+    expect(policy('https://livingroom.local', req('livingroom.local'))).toBe(true);
+    expect(policy('https://tv.example', req('127.0.0.1:8790'))).toBe(true); // listed
+    expect(policy('http://evil.example', req('192.168.1.20:8790'))).toBe(false); // another site
+    expect(policy('http://192.168.1.20:9999', req('192.168.1.20:8790'))).toBe(false); // another port
+    expect(policy('http://rebind.evil.example:8790', req('rebind.evil.example:8790'))).toBe(false); // a public name that resolves here
+    expect(policy('http://203.0.113.7:8790', req('203.0.113.7:8790'))).toBe(true); // an address literal cannot be rebound
+    expect(policy('http://192.168.1.20', req('192.168.1.20:80'))).toBe(true); // the default port, written or not
+    expect(policy('null', req('192.168.1.20:8790'))).toBe(false);
   });
 });

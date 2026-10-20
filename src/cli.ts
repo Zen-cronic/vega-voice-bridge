@@ -12,7 +12,7 @@ import { realpathSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { BridgeHub, forwardedClientKey, proxyMatcher } from './hub.js';
+import { BridgeHub, forwardedClientKey, localOriginPolicy, normalizeOrigin, proxyMatcher } from './hub.js';
 import { lanAddress, servePhonePage } from './serve.js';
 
 const HELP = `Usage: tv-voice-bridge-hub [options]
@@ -30,6 +30,10 @@ const HELP = `Usage: tv-voice-bridge-hub [options]
   --proxy <addr>      Also trust a proxy at this address or CIDR range, e.g. 203.0.113.0/24 (repeatable)
   --proxy-hops <n>    Proxies in front of the hub, each appending to X-Forwarded-For (default 1). Name every
                       proxy in the chain with --proxy (a CDN's ranges too): only those entries are passed over
+  --origin <origin>   Also accept WebSockets from web pages on this origin, e.g. https://app.example (repeatable).
+                      By default only pages this hub served (its own address, --public-url and --join-url) and
+                      clients that send no Origin (TV apps, Node) may connect; other sites' pages get 403
+  --any-origin        Accept WebSockets from any web page (no Origin check)
   --quiet             Do not log joins and leaves
   -h, --help          Show this help
 
@@ -51,6 +55,10 @@ export interface HubCliOptions {
   proxies?: string[];
   /** With trustProxy: proxies in front of the hub. Default 1. */
   proxyHops?: number;
+  /** Web origins accepted besides the hub's own pages (`--origin`). */
+  origins?: string[];
+  /** No Origin check at all (`--any-origin`). */
+  anyOrigin?: boolean;
   quiet: boolean;
 }
 
@@ -68,6 +76,8 @@ export function parseHubArgs(argv: string[], env: Record<string, string | undefi
       'trust-proxy': { type: 'boolean' },
       proxy: { type: 'string', multiple: true },
       'proxy-hops': { type: 'string' },
+      origin: { type: 'string', multiple: true },
+      'any-origin': { type: 'boolean' },
       quiet: { type: 'boolean' },
       help: { type: 'boolean', short: 'h' },
     },
@@ -88,6 +98,8 @@ export function parseHubArgs(argv: string[], env: Record<string, string | undefi
   } catch {
     throw new Error(`--proxy takes an address or a CIDR range, got ${proxies.join(' ')}`);
   }
+  const origins = values.origin ?? [];
+  for (const o of origins) if (!normalizeOrigin(o) || !/^https?:\/\/[^/]+\/?$/i.test(o.trim())) throw new Error(`--origin takes a web origin such as https://app.example, got ${o}`);
   return {
     port,
     host: values.host ?? '0.0.0.0',
@@ -99,6 +111,8 @@ export function parseHubArgs(argv: string[], env: Record<string, string | undefi
     trustProxy: values['trust-proxy'] ?? false,
     proxies,
     proxyHops,
+    origins,
+    anyOrigin: values['any-origin'] ?? false,
     quiet: values.quiet ?? false,
   };
 }
@@ -123,11 +137,30 @@ export async function startHubCli(o: HubCliOptions, log: (line: string) => void 
   const base = o.publicUrl ?? `http://${reachable}:${port}`;
   const joinUrl = (code: string) => (o.joinUrl ? o.joinUrl.split('{code}').join(code) : `${base}/p/${code}`);
   const rateKey = o.trustProxy ? forwardedClientKey({ proxies: o.proxies, hops: o.proxyHops }) : undefined;
+  // The pages this hub serves, wherever phones reach it, plus what --origin adds.
+  const originOf = (u: string | undefined) => {
+    try {
+      return u ? normalizeOrigin(new URL(u).origin) : null;
+    } catch {
+      return null;
+    }
+  };
+  const ownOrigins = [o.publicUrl, o.joinUrl?.split('{code}').join('CODE')].map(originOf).filter((u): u is string => !!u);
+  const extraOrigins = [...new Set([...ownOrigins, ...(o.origins ?? []).map((x) => normalizeOrigin(x)!)])];
+  const refusedOrigins = new Set<string>();
   const hub: BridgeHub = new BridgeHub({
     server,
     path: o.path,
     joinUrl,
     rateKey,
+    allowedOrigins: o.anyOrigin ? undefined : localOriginPolicy(extraOrigins),
+    log: (event, data) => {
+      if (event !== 'origin-refused' || refusedOrigins.size >= 100) return;
+      const origin = String(data?.origin);
+      if (refusedOrigins.has(origin)) return;
+      refusedOrigins.add(origin);
+      log(`refused a WebSocket from a page on ${origin} (403); if that page is yours, add --origin ${origin}`);
+    },
     onFinal: o.echo
       ? (room, msg) => {
           hub.say(room, { id: `say_${msg.utteranceId}`, text: `You said: ${msg.text}`, priority: 'high' });
@@ -145,6 +178,11 @@ export async function startHubCli(o: HubCliOptions, log: (line: string) => void 
   log(`tv-voice-bridge hub on ws://${reachable}:${port}${o.path}`);
   log(`phones join at ${joinUrl('<CODE>')} (each TV gets its code when it connects)`);
   if (o.echo) log('echo responder on: each final is answered "You said: ..."');
+  log(
+    o.anyOrigin
+      ? 'origin check off (--any-origin): web pages on any site may connect'
+      : `origin check: web pages this hub served${extraOrigins.length ? `, and ${extraOrigins.join(', ')}` : ''}; clients without an Origin (TV apps) always connect`,
+  );
   if (o.trustProxy && (o.proxyHops ?? 1) > 1 && (o.proxies ?? []).length === 0)
     log(
       `warning: --proxy-hops ${o.proxyHops} without --proxy: only loopback proxies are passed over, so every client behind an outer proxy (a CDN) shares its address as one rate-limit key. Name the outer proxy's ranges with --proxy.`,

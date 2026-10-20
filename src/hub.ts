@@ -119,6 +119,19 @@ export interface HubOptions {
    */
   rateKey?: (req: IncomingMessage) => string;
   /**
+   * Which web pages may open a WebSocket to this hub, checked on every upgrade before the handshake: the defence
+   * against cross-site WebSocket hijacking (a page on another site, opened on a phone or laptop on your Wi-Fi,
+   * talking to the hub as if it were yours). A refused upgrade gets HTTP 403. An upgrade with no `Origin` header (a
+   * native TV app, Node, curl) always passes: Origin only constrains browsers, since any other client can write
+   * whatever it likes (RFC 6455, section 10.2).
+   * - A list: origins as browsers write them (`https://app.example`, `http://192.168.1.20:8790`), compared exactly
+   *   after lower-casing. An entry that is not an http(s) origin throws here. `null` never matches.
+   * - A function `(origin, req) => boolean`, for anything else. `localOriginPolicy(extra)` is the CLI's policy: the
+   *   hub's own pages, plus `extra`. A function that throws refuses.
+   * Default: no check.
+   */
+  allowedOrigins?: string[] | ((origin: string, req: IncomingMessage) => boolean);
+  /**
    * IPv6 rate keys are bucketed to this prefix, so one host cannot get a fresh budget from every address in its
    * /64. Applies to the socket's address and to a `rateKey` that returns an address. Default 64; 128 keys each
    * address on its own.
@@ -159,11 +172,15 @@ export interface HubStats {
   roomsExpired: number;
   /** Times the hub-wide wrong-code budget ran out and pairing paused. */
   pairingPauses: number;
+  /** Upgrades refused because their Origin is not allowed (`allowedOrigins`). */
+  originRefused: number;
 }
 
 interface Conn {
   ws: WebSocket;
   key: string;
+  /** The upgrade's Origin header, for the log (absent for clients that are not browsers). */
+  origin: string | undefined;
   room: Room | null;
   me: Peer | null;
   missed: number;
@@ -242,6 +259,60 @@ function ipv6Groups(ip: string): number[] {
   const t = tail ? tail.split(':') : [];
   const groups = [...h, ...Array<string>(tail === undefined ? 0 : 8 - h.length - t.length).fill('0'), ...t];
   return groups.map((g) => parseInt(g, 16) || 0);
+}
+
+/**
+ * A web origin as browsers serialize it (`https://app.example`, `http://192.168.1.20:8790`: lower case, no default
+ * port, no path), or null for anything that is not an http(s) origin (including `null`).
+ */
+export function normalizeOrigin(origin: string): string | null {
+  try {
+    const u = new URL(origin.trim());
+    if ((u.protocol !== 'http:' && u.protocol !== 'https:') || u.username || u.password || u.pathname !== '/' || u.search || u.hash) return null;
+    return `${u.protocol}//${u.host}`.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+/** A Host that no DNS name can be rebound onto: an address literal, `localhost` (and `*.localhost`) or an mDNS `*.local` name. */
+function unrebindable(hostname: string): boolean {
+  const h = hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  return isIP(h) !== 0 || h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local');
+}
+
+/**
+ * The CLI's Origin policy, for `allowedOrigins`: pages this hub served itself, plus `extra` origins (a public URL
+ * or a join page on another site). "Served itself" means the Origin is the request's own Host, when that Host is
+ * an address, `localhost` or a `.local` name: a page on a public DNS name could be a DNS-rebinding page whose name
+ * now points at this hub, so a public name has to be listed in `extra`.
+ */
+export function localOriginPolicy(extra: string[] = []): (origin: string, req: IncomingMessage) => boolean {
+  const listed = originSet(extra);
+  return (origin, req) => {
+    const n = normalizeOrigin(origin);
+    if (!n) return false;
+    if (listed.has(n)) return true;
+    const host = req.headers?.host;
+    if (!host) return false;
+    try {
+      const scheme = n.slice(0, n.indexOf('//'));
+      const u = new URL(`${scheme}//${host}`);
+      return unrebindable(u.hostname) && n === `${scheme}//${u.host}`.toLowerCase();
+    } catch {
+      return false;
+    }
+  };
+}
+
+function originSet(origins: string[]): Set<string> {
+  const set = new Set<string>();
+  for (const o of origins) {
+    const n = /^[a-z][a-z0-9+.-]*:\/\/[^/]*\/?$/i.test(o.trim()) ? normalizeOrigin(o) : null;
+    if (!n) throw new Error(`tv-voice-bridge: not an http(s) origin: ${o}`);
+    set.add(n);
+  }
+  return set;
 }
 
 /**
@@ -343,6 +414,17 @@ function clientKey(req: IncomingMessage, trusted: (addr: string) => boolean, hop
   return bareIp(entries[i]!);
 }
 
+/** Answer an upgrade with an HTTP error and close the socket (never throws). */
+function refuseUpgrade(socket: Duplex, status: number, reason: string) {
+  try {
+    if (!socket.writable) return void socket.destroy();
+    socket.once('finish', () => socket.destroy());
+    socket.end(`HTTP/1.1 ${status} ${reason}\r\nConnection: close\r\nContent-Type: text/plain\r\nContent-Length: 0\r\n\r\n`);
+  } catch {
+    socket.destroy();
+  }
+}
+
 function rawToString(data: RawData): string {
   if (Buffer.isBuffer(data)) return data.toString('utf8');
   if (Array.isArray(data)) return Buffer.concat(data).toString('utf8');
@@ -399,7 +481,7 @@ class FixedWindow {
 export class BridgeHub {
   readonly rooms = new Map<string, Room>();
   readonly limits: Readonly<HubLimits>;
-  readonly stats: HubStats = { badMessages: 0, rateLimited: 0, backpressureDrops: 0, backpressureCloses: 0, heartbeatTimeouts: 0, handlerErrors: 0, roomsExpired: 0, pairingPauses: 0 };
+  readonly stats: HubStats = { badMessages: 0, rateLimited: 0, backpressureDrops: 0, backpressureCloses: 0, heartbeatTimeouts: 0, handlerErrors: 0, roomsExpired: 0, pairingPauses: 0, originRefused: 0 };
   private wss: WebSocketServer;
   private clock: () => number;
   private readonly path: string;
@@ -412,6 +494,7 @@ export class BridgeHub {
   private readonly hubMisses: FixedWindow;
   private readonly graceMs: number;
   private readonly random: () => number;
+  private readonly originAllowed: ((origin: string, req: IncomingMessage) => boolean) | null;
   private timers: Array<ReturnType<typeof setInterval>> = [];
   private closed = false;
 
@@ -421,6 +504,15 @@ export class BridgeHub {
     this.path = opts.path ?? '/ws';
     this.graceMs = opts.roomGraceMs ?? 60_000;
     this.random = opts.random ?? secureRandom;
+    const origins = opts.allowedOrigins;
+    if (typeof origins === 'function') this.originAllowed = origins;
+    else if (origins) {
+      const set = originSet(origins);
+      this.originAllowed = (origin) => {
+        const n = normalizeOrigin(origin);
+        return n !== null && set.has(n);
+      };
+    } else this.originAllowed = null;
     this.hellos = new FixedWindow(this.limits.hellosPerMinute, 60_000);
     this.misses = new FixedWindow(this.limits.codeMissesPerMinute, 60_000);
     this.hubMisses = new FixedWindow(this.limits.hubCodeMisses, this.limits.hubCodeMissWindowMs);
@@ -461,6 +553,12 @@ export class BridgeHub {
       return;
     }
     if (pathname !== this.path || this.closed) return;
+    if (!this.originOk(req)) {
+      this.stats.originRefused++;
+      this.log('origin-refused', { origin: capText(String(req.headers.origin), 256) });
+      refuseUpgrade(socket, 403, 'Forbidden');
+      return;
+    }
     try {
       this.wss.handleUpgrade(req, socket, head, (ws) => this.accept(ws, req));
     } catch (err) {
@@ -468,6 +566,19 @@ export class BridgeHub {
       this.log('upgrade-failed', { error: errorText(err) });
     }
   };
+
+  /** No Origin header (not a browser), or one `allowedOrigins` admits. A policy that throws refuses. */
+  private originOk(req: IncomingMessage): boolean {
+    if (!this.originAllowed) return true;
+    const origin = req.headers.origin;
+    if (origin === undefined) return true;
+    try {
+      return this.originAllowed(String(origin), req) === true;
+    } catch (err) {
+      this.handlerError('allowedOrigins', err);
+      return false;
+    }
+  }
 
   now(): number {
     return this.clock();
@@ -651,7 +762,8 @@ export class BridgeHub {
     if (this.opts.rateKey) key = String(this.call('rateKey', () => this.opts.rateKey!(req)) ?? key);
     key = rateKeyBucket(key, this.opts.ipv6RateKeyPrefix ?? 64);
     const burst = this.limits.messagesPerSecond * 2;
-    const conn: Conn = { ws, key, room: null, me: null, missed: 0, tokens: burst, refilledAt: mono(), rateNotedAt: -Infinity, ready: Promise.resolve() };
+    const origin = typeof req.headers.origin === 'string' ? capText(req.headers.origin, 256) : undefined;
+    const conn: Conn = { ws, key, origin, room: null, me: null, missed: 0, tokens: burst, refilledAt: mono(), rateNotedAt: -Infinity, ready: Promise.resolve() };
     this.conns.add(conn);
     ws.on('error', (err) => {
       this.log('socket-error', { error: errorText(err), code: conn.room?.code });
@@ -885,7 +997,7 @@ export class BridgeHub {
       serverTime: this.now(),
     });
     this.broadcast(room, { type: 'peers', peers: this.peersOf(room) });
-    this.log('join', { code: room.code, role: me.role, clientId: me.clientId });
+    this.log('join', { code: room.code, role: me.role, clientId: me.clientId, origin: conn.origin });
     this.call('onJoin', () => this.opts.onJoin?.(room, me));
   }
 

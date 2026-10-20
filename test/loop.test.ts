@@ -278,6 +278,39 @@ describe('tv-voice-bridge-hub (CLI)', () => {
     }
   });
 
+  it('accepts WebSockets from its own pages and from clients with no Origin, and refuses other sites with 403 (--origin, --any-origin)', async () => {
+    expect(parseHubArgs(['--origin', 'https://app.example', '--origin', 'http://192.168.1.20:8790'])).toMatchObject({ origins: ['https://app.example', 'http://192.168.1.20:8790'], anyOrigin: false });
+    expect(parseHubArgs(['--any-origin'])).toMatchObject({ anyOrigin: true });
+    for (const bad of ['app.example', 'https://app.example/join', 'ftp://app.example']) expect(() => parseHubArgs(['--origin', bad]), bad).toThrow(/--origin takes a web origin/);
+    const opened = (port: number, origin?: string) =>
+      new Promise<'open' | number>((resolve) => {
+        const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`, { headers: origin ? { origin } : {} });
+        ws.on('open', () => (resolve('open'), ws.terminate()));
+        ws.on('unexpected-response', (_q, res) => resolve(res.statusCode ?? 0));
+        ws.on('error', () => undefined);
+      });
+    const lines: string[] = [];
+    const app = await startHubCli({ ...(parseHubArgs(['--port', '0', '--host', '127.0.0.1', '--public-url', 'https://tv.example', '--origin', 'https://app.example']) as Exclude<ReturnType<typeof parseHubArgs>, 'help'>) }, (l) => lines.push(l));
+    try {
+      expect(await opened(app.port)).toBe('open'); // a TV app or Node: no Origin
+      expect(await opened(app.port, `http://127.0.0.1:${app.port}`)).toBe('open'); // the phone page this hub served
+      expect(await opened(app.port, 'https://tv.example')).toBe('open'); // --public-url
+      expect(await opened(app.port, 'https://app.example')).toBe('open'); // --origin
+      expect(await opened(app.port, 'https://evil.example')).toBe(403);
+      expect(await opened(app.port, 'https://evil.example')).toBe(403);
+      expect(lines.filter((l) => l.startsWith('refused a WebSocket from a page on https://evil.example'))).toHaveLength(1); // once per origin
+      expect(lines).toContain('origin check: web pages this hub served, and https://tv.example, https://app.example; clients without an Origin (TV apps) always connect');
+    } finally {
+      await app.close();
+    }
+    const any = await startHubCli({ ...(parseHubArgs(['--port', '0', '--host', '127.0.0.1', '--any-origin', '--quiet']) as Exclude<ReturnType<typeof parseHubArgs>, 'help'>) }, () => undefined);
+    try {
+      expect(await opened(any.port, 'https://evil.example')).toBe('open');
+    } finally {
+      await any.close();
+    }
+  });
+
   it('a --join-url template replaces the whole URL', async () => {
     const app = await startHubCli({ port: 0, host: '127.0.0.1', path: '/ws', joinUrl: 'https://app.example/join/{code}?tv=1', echo: false, trustProxy: false, quiet: true }, () => undefined);
     try {

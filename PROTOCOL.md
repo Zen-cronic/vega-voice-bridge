@@ -24,6 +24,7 @@ The keywords MUST, SHOULD and MAY follow RFC 2119.
 - One WebSocket (RFC 6455) per client, on a path the hub chooses (default `/ws`). Use `wss://` beyond a trusted LAN.
 - Each message is one JSON object, UTF-8, in **one text frame**. Senders MUST NOT split a message across frames or put several in one frame.
 - Receivers SHOULD tolerate both anyway. Some React Native runtimes deliver one frame as several `message` events, or several frames as one. The reference client reassembles them with `MessageAssembler` (top-level JSON object scanning, a size cap, and lost-fragment recovery).
+- A hub MAY refuse an upgrade whose `Origin` header names a web page it does not trust, with HTTP 403 before the handshake (reference: `allowedOrigins`). It MUST NOT refuse an upgrade for carrying no `Origin`: TV apps and other non-browser clients send none.
 - The hub refuses binary frames with `bad-message`. It closes a socket whose frame exceeds its size cap (default 256 KiB) with close code 1009. Invalid UTF-8 and other protocol errors close that socket only.
 - Receivers MUST ignore fields they do not know. Optional fields MAY be absent or `null`, and `null` means absent.
 
