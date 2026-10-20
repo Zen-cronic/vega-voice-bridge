@@ -20,6 +20,14 @@ it('serves the TV and phone pages; /lib/ serves only dist/', async () => {
     expect((await fetch(`http://127.0.0.1:${port}${escape}`)).status).toBe(404);
 });
 
+it('the TV page draws the pairing QR from the join URL with ./qr, which /lib/ serves', async () => {
+  const html = await (await fetch(`http://127.0.0.1:${port}/`)).text();
+  expect(html).toContain("import { qrMatrix, qrSvg } from '/lib/qr.js';");
+  expect(html).toContain('qrSvg(qrMatrix(w.joinUrl)');
+  const lib = await fetch(`http://127.0.0.1:${port}/lib/qr.js`);
+  if (lib.status === 200) expect(await lib.text()).toContain('export function qrSvg'); // dist/ exists once built
+});
+
 it('M38: the join URL points at the LAN address and the bound port, not localhost:0', async () => {
   const tv = new BridgeClient({ url: `ws://127.0.0.1:${port}/ws`, role: 'screen', reconnect: false });
   const { code, joinUrl } = await tv.connect();

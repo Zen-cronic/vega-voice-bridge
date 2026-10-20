@@ -10,21 +10,35 @@
       #partial { color: #9aa4b2; font-style: italic; min-height: 50px; }
       #say { color: #ffcf33; margin-top: 40px; min-height: 50px; }
       small { color: #6b7684; }
+      #pair { display: flex; gap: 40px; align-items: center; }
+      #qr svg { width: 240px; height: 240px; display: block; border-radius: 8px; }
     </style>
   </head>
   <body>
-    <small>Open this on the phone (same Wi-Fi):</small>
-    <div id="join">connecting…</div>
-    <div id="code">····</div>
+    <div id="pair">
+      <div id="qr"></div>
+      <div>
+        <small>Scan with a phone on the same Wi-Fi, or open:</small>
+        <div id="join">connecting…</div>
+        <div id="code">····</div>
+      </div>
+    </div>
     <div id="partial"></div>
     <div id="heard">Say something into the phone.</div>
     <div id="say"></div>
     <small id="status">Press any key once so the browser allows speech.</small>
     <script type="module">
       import { BridgeClient } from '/lib/index.js';
+      import { qrMatrix, qrSvg } from '/lib/qr.js';
       const $ = (id) => document.getElementById(id);
       const tv = new BridgeClient({ url: `ws://${location.host}/ws`, role: 'screen', code: sessionStorage.getItem('code') ?? undefined });
-      tv.on('welcome', (w) => { sessionStorage.setItem('code', w.code); $('code').textContent = w.code; $('join').textContent = w.joinUrl; });
+      tv.on('welcome', (w) => {
+        sessionStorage.setItem('code', w.code);
+        $('code').textContent = w.code;
+        $('join').textContent = w.joinUrl;
+        // The pairing QR: ./qr encodes it with no dependencies; the SVG is built from the matrix, not from page input.
+        $('qr').innerHTML = w.joinUrl ? qrSvg(qrMatrix(w.joinUrl), { dark: '#0b0d11', light: '#ffffff' }) : '';
+      });
       tv.on('status', (s) => ($('status').textContent = s === 'open' ? 'Connected.' : s === 'reconnecting' ? 'Hub offline, retrying…' : s));
       tv.on('transcript.partial', (m) => ($('partial').textContent = m.text));
       tv.on('intent', (m) => {
