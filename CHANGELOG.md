@@ -7,6 +7,8 @@ The wire protocol is still v1, revision 3: no message or field changed, and 0.3 
 ### Changed
 - **`handler-failed` no longer carries the exception text.** The room gets `handler failed`; the text, the room code and the `utteranceId` go to the hub's `log`. `exposeHandlerErrors: true` sends the text, capped at 2,000 characters, for development. Before, a failing `onFinal` or tracked `onApp` sent its exception text to every peer in the room, uncapped; past 2,000 characters clients refused the frame, so the error never arrived.
 - **The CLI hub checks `Origin`.** It accepts WebSockets from pages it served itself (its own address, `--public-url`, `--join-url`) and from clients that send no `Origin` (TV apps, Node); a page on another site gets 403. `--origin <origin>` adds a site, and `--any-origin` turns the check off. It prints the policy at startup and each refused origin once.
+- **`examples/vega-voice-loop/vega` is now the package `tv-voice-bridge-voiceloop`** (it was `@amazon-devices/voiceloop`, Amazon's npm scope). Its builds are `build/<arch>-release/tv-voice-bridge-voiceloop_<arch>.vpkg`; the app id, `com.tvvoicebridge.loop`, is the same.
+- **`examples/minimal-vega` points at the voice-loop hub (port 8790),** which serves the clips `./vega` plays; the web-TV examples on 8800 send text only.
 - **IPv6 rate keys are the client's /64**, so one host cannot get a fresh hello and wrong-code budget from every address in its prefix (`ipv6RateKeyPrefix`, default 64; 128 keys each address on its own).
 - **Pairing pauses when wrong codes pass a hub-wide budget** (below).
 
@@ -14,6 +16,7 @@ The wire protocol is still v1, revision 3: no message or field changed, and 0.3 
 - **Hub, a hub-wide wrong-code budget:** `limits.hubCodeMisses` (default 100) per `limits.hubCodeMissWindowMs` (default 10 minutes), counting the misses the per-key budget counts, with one rate key counting for at most a tenth. Past it, every hello that names a code is refused with `rate-limited` until the window ends, the right code too, so a refusal tells a guesser nothing. Still admitted: connected peers, a peer resuming into its own room with the `clientId`, role and `resumeToken` it joined with, and a screen asking for a fresh code. `hub.stats.pairingPauses` counts the pauses.
 - **Hub, an Origin allow-list:** `allowedOrigins` (exact origins, or a function), off by default in the library. A refused upgrade gets 403 before the handshake; an upgrade with no `Origin` always passes; a policy that throws refuses. `localOriginPolicy(extra)` is the CLI's policy, `normalizeOrigin()` the comparison, and `hub.stats.originRefused` the count. The `join` log event carries the `Origin` a peer connected with.
 - **Hub:** `rateKeyBucket(key, prefix)`, `HANDLER_FAILED_MESSAGE`.
+- **`./vega`:** `httpUrlMode` plays plain-http URLs in URL mode instead of MSE, to check whether a device's OS now allows cleartext media (off by default).
 - **`./phone`:** `voiceSupport()` says whether a page can listen and, if not, why (`insecure-context`, `no-support`) and what to do: the hub's https link, Chrome's per-device developer flag with the page's origin filled in, or `localhost` on the hub's computer. Browsers with no recognizer are told which one to use.
 - **The phone page** says why voice is off over plain http and lists those fixes, disables the mic controls and keeps typing. Opened without a code (`/p/`), it asks for one; the CLI hub sends `/` and `/p` there.
 - **The web TV example** draws the pairing QR with `./qr`.
@@ -22,7 +25,9 @@ The wire protocol is still v1, revision 3: no message or field changed, and 0.3 
   - `agents/bedrock.mjs`: a ready command for Amazon Bedrock (one Converse call per utterance through the AWS CLI).
   - `startVoiceLoop()` is exported; each loop line gains `agentMs`, and each join logs the peer's `Origin`.
   - The scripted phone takes `--n` and `--gap`.
-- **`docs/https.md`:** four ways to get voice on the phone (Chrome's developer flag, an https tunnel, a local CA for an iPhone, localhost).
+  - The TV shows the current utterance as a pending metrics row until its reply ends (rows carry `sayId`), and `npm run hub -- <host:port> --http-url-mode` builds the app with `httpUrlMode`.
+- **`scripts/stick-run.md` and `scripts/bench.mjs`:** the measured Fire TV Stick run step by step, and its numbers (n, p50, p95, min and max per leg) from the hub's log.
+- **Docs:** `docs/https.md` (four ways to get voice on the phone: Chrome's developer flag, an https tunnel, a local CA for an iPhone, localhost), `docs/deploy.md` (every hub option, proxies and tunnels, the Origin check, what to watch), `docs/vega-notes.md` (the Vega quirks we hit and what the bridge does about each), `SECURITY.md` (the threat table), `CONTRIBUTING.md`, and issue and pull request templates. The README leads with Fire TV and the loop, and adds "Why not Alexa", "Browsers" and "Where speech is recognized". `test/docs.test.ts` checks every relative link and anchor in the docs.
 - **CI** on GitHub Actions: Node 20, 22 and 24 (typecheck, test, build, the loop from `dist/`, `npm pack --dry-run`), and the Vega example type-checked against the real `@amazon-devices/react-native-kepler` and `react-native-w3cmedia` packages with the packed tarball.
 - **Releases:** a `v*` tag builds, tests and packs, then attaches the tarball and its SHA-256 to a GitHub release with this section as the notes. It never publishes to npm ([docs/releasing.md](docs/releasing.md)).
 - `package.json`: `repository`, `homepage` and `bugs`.
