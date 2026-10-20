@@ -87,7 +87,7 @@ The hub rebuilds every relayed message from validated fields. Unknown fields are
 - **Mic `hello`:** it MUST name a live room. Otherwise the answer is `unknown-code`.
 - **Room lifetime:** a room closes once it has had no screen for the hub's grace period (default 60 s). Mics may still join or rejoin inside the grace period. When a room closes, each remaining peer gets `error unknown-code`, then close code **4404**.
 - **Capacity:** a hello beyond the hub's room cap (default 10,000) or the room's peer cap (default 32) gets `full`.
-- **Rate limits:** these are counted per rate key (the remote address by default, or a key the operator derives behind a proxy):
+- **Rate limits:** these are counted per rate key (the remote address by default, or a key the operator derives behind a proxy). An IPv6 address SHOULD count as its /64 network, because one host can draw any address from it (reference: `ipv6RateKeyPrefix`, default 64):
   - hellos per minute (default 120);
   - hellos that name a code no live room has, per minute (default 30). This covers mics with a wrong code and screens whose explicit code misses: such a screen hello creates the room, as a resume does, but it is also how a screen would probe codes. Past the limit, hellos that name a code are refused until the window ends. A screen hello without a code is not limited by this budget.
 

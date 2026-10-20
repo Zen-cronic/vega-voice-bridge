@@ -7,7 +7,7 @@ import { createServer, request, type Server } from 'node:http';
 import net, { type Socket } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
-import { BridgeHub, type HubOptions } from '../src/hub.js';
+import { BridgeHub, rateKeyBucket, type HubOptions } from '../src/hub.js';
 import { BridgeClient, FIELD_LIMITS, decode, type BridgeMessage } from '../src/index.js';
 
 type Raw = { ws: WebSocket; send: (m: unknown) => void; next: (type?: string) => Promise<BridgeMessage>; closed: Promise<number>; inbox: BridgeMessage[] };
@@ -386,6 +386,39 @@ describe('rooms and pairing limits', () => {
     // The pause ends with the window.
     await sleep(320);
     expect((await mic(url, tv.code, 'mic_late')).first).toMatchObject({ type: 'welcome', code: tv.code });
+  });
+
+  it('IPv6 clients are keyed on their /64: addresses inside one share the wrong-code budget', async () => {
+    let n = 1;
+    // One host can use any address in its /64 (privacy addresses, or a whole delegated prefix).
+    const { url } = await start({ rateKey: () => `2001:db8:1:2::${(n++).toString(16)}`, limits: { codeMissesPerMinute: 2 } });
+    const tv = await screen(url);
+    for (const guess of ['ZZZZ', 'YYYY']) expect((await mic(url, guess)).first).toMatchObject({ code: 'unknown-code' });
+    expect((await mic(url, tv.code)).first).toMatchObject({ code: 'rate-limited' });
+    // ipv6RateKeyPrefix: 128 keys each address on its own.
+    let m = 1;
+    const own = await start({ rateKey: () => `2001:db8:1:2::${(m++).toString(16)}`, ipv6RateKeyPrefix: 128, limits: { codeMissesPerMinute: 2 } });
+    const tv2 = await screen(own.url);
+    for (const guess of ['ZZZZ', 'YYYY']) expect((await mic(own.url, guess)).first).toMatchObject({ code: 'unknown-code' });
+    expect((await mic(own.url, tv2.code)).first).toMatchObject({ type: 'welcome' });
+  });
+
+  it('rateKeyBucket: an IPv6 address becomes its network, IPv4 stays the bare address, other keys pass through', () => {
+    expect(rateKeyBucket('2001:db8:1:2:aaaa:bbbb:cccc:dddd')).toBe('2001:db8:1:2::/64');
+    expect(rateKeyBucket('2001:DB8:1:2::7')).toBe('2001:db8:1:2::/64');
+    expect(rateKeyBucket('[2001:db8:1:2::7]:443')).toBe('2001:db8:1:2::/64');
+    expect(rateKeyBucket('2001:db8::1')).toBe('2001:db8:0:0::/64');
+    expect(rateKeyBucket('fe80::1%eth0')).toBe('fe80:0:0:0::/64');
+    expect(rateKeyBucket('2001:db8:1:2::7', 48)).toBe('2001:db8:1::/48');
+    expect(rateKeyBucket('2001:db8:1:2ff::7', 56)).toBe('2001:db8:1:200::/56');
+    expect(rateKeyBucket('2001:db8:1:2::7', 128)).toBe('2001:db8:1:2::7');
+    expect(rateKeyBucket('::ffff:203.0.113.7')).toBe('203.0.113.7');
+    expect(rateKeyBucket('::ffff:cb00:7107')).toBe('203.0.113.7'); // the same mapped address, written in hex
+    expect(rateKeyBucket('64:ff9b::203.0.113.7')).toBe('64:ff9b:0:0::/64');
+    expect(rateKeyBucket('203.0.113.7')).toBe('203.0.113.7');
+    expect(rateKeyBucket('203.0.113.7:51544')).toBe('203.0.113.7');
+    expect(rateKeyBucket('client-7')).toBe('client-7');
+    expect(rateKeyBucket('unknown')).toBe('unknown');
   });
 
   it('hubCodeMisses: 0 turns the hub-wide budget off', async () => {

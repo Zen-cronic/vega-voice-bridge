@@ -118,6 +118,12 @@ export interface HubOptions {
    * client shares one address, so derive the key from what the proxy appended: `(req) => forwardedClient(req)`.
    */
   rateKey?: (req: IncomingMessage) => string;
+  /**
+   * IPv6 rate keys are bucketed to this prefix, so one host cannot get a fresh budget from every address in its
+   * /64. Applies to the socket's address and to a `rateKey` that returns an address. Default 64; 128 keys each
+   * address on its own.
+   */
+  ipv6RateKeyPrefix?: number;
   /** Random source for pairing codes (tests). Default: the platform CSPRNG. */
   random?: () => number;
   /**
@@ -209,13 +215,56 @@ export interface ForwardedClientOptions {
 const unmapped = (addr: string) => (addr.startsWith('::ffff:') ? addr.slice(7) : addr);
 const isLoopback = (addr: string) => addr === '::1' || unmapped(addr).startsWith('127.');
 
-/** The bare IP in an address as proxies write it: `::ffff:` mapping, `[v6]:port` and `v4:port` removed. */
-function bareIp(addr: string): string {
+/** An address as proxies write it, with `[v6]:port` and `v4:port` reduced to the address. */
+function stripPort(addr: string): string {
   let a = addr.trim();
   const bracketed = /^\[([^\]]+)\](?::\d+)?$/.exec(a);
   if (bracketed) a = bracketed[1]!;
   else if (/^[\d.]+:\d+$/.test(a)) a = a.slice(0, a.lastIndexOf(':'));
-  return unmapped(a);
+  return a;
+}
+
+/** The bare IP in an address as proxies write it: `::ffff:` mapping, `[v6]:port` and `v4:port` removed. */
+function bareIp(addr: string): string {
+  return unmapped(stripPort(addr));
+}
+
+/** The eight 16-bit groups of a valid IPv6 address (zone removed, an embedded IPv4 tail read as two groups). */
+function ipv6Groups(ip: string): number[] {
+  let a = ip.split('%')[0]!.toLowerCase();
+  const v4 = /(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(a);
+  if (v4) {
+    const [b0, b1, b2, b3] = v4.slice(1).map(Number) as [number, number, number, number];
+    a = `${a.slice(0, v4.index)}${((b0 << 8) | b1).toString(16)}:${((b2 << 8) | b3).toString(16)}`;
+  }
+  const [head = '', tail] = a.split('::');
+  const h = head ? head.split(':') : [];
+  const t = tail ? tail.split(':') : [];
+  const groups = [...h, ...Array<string>(tail === undefined ? 0 : 8 - h.length - t.length).fill('0'), ...t];
+  return groups.map((g) => parseInt(g, 16) || 0);
+}
+
+/**
+ * The rate key for an address: an IPv6 address becomes its `/ipv6Prefix` network (default /64, what one host or
+ * one subscriber line can draw addresses from), an IPv4 address (or an IPv4-mapped IPv6 one) the bare address.
+ * Anything that is not an address, such as a key your own `rateKey` made up, is returned unchanged.
+ */
+export function rateKeyBucket(key: string, ipv6Prefix = 64): string {
+  const a = stripPort(key);
+  const family = isIP(a.split('%')[0]!);
+  if (family === 4) return a;
+  if (family !== 6) return key;
+  const g = ipv6Groups(a);
+  if (g.slice(0, 5).every((x) => x === 0) && g[5] === 0xffff) return `${g[6]! >> 8}.${g[6]! & 255}.${g[7]! >> 8}.${g[7]! & 255}`;
+  const bits = Math.max(0, Math.min(128, Math.floor(ipv6Prefix)));
+  if (bits >= 128) return a.toLowerCase();
+  const kept = Math.max(1, Math.ceil(bits / 16));
+  const net = g.slice(0, kept).map((x, i) => {
+    const left = bits - i * 16;
+    const mask = left >= 16 ? 0xffff : left <= 0 ? 0 : (0xffff << (16 - left)) & 0xffff;
+    return (x & mask).toString(16);
+  });
+  return `${net.join(':')}::/${bits}`;
 }
 
 /**
@@ -600,6 +649,7 @@ export class BridgeHub {
   private accept(ws: WebSocket, req: IncomingMessage) {
     let key = req.socket?.remoteAddress ?? 'unknown';
     if (this.opts.rateKey) key = String(this.call('rateKey', () => this.opts.rateKey!(req)) ?? key);
+    key = rateKeyBucket(key, this.opts.ipv6RateKeyPrefix ?? 64);
     const burst = this.limits.messagesPerSecond * 2;
     const conn: Conn = { ws, key, room: null, me: null, missed: 0, tokens: burst, refilledAt: mono(), rateNotedAt: -Infinity, ready: Promise.resolve() };
     this.conns.add(conn);
