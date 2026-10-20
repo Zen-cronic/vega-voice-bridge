@@ -1,5 +1,7 @@
 # tv-voice-bridge
 
+[![CI](https://github.com/Zen-cronic/tv-voice-bridge/actions/workflows/ci.yml/badge.svg)](https://github.com/Zen-cronic/tv-voice-bridge/actions/workflows/ci.yml)
+
 **A voice back-and-forth harness for TV apps and agents.** The phone listens, your app or agent answers, the TV shows the answer and says it, and you get a timestamp for every hop.
 
 ```
@@ -212,6 +214,7 @@ tv.connect().catch(() => undefined);                                       // ke
 - **Built-in client defences.** The client reassembles messages that arrive split across events, and its heartbeat drops a link that goes silent even when `onclose` never fires.
 - **Audio: https in URL mode, or fragmented MP4/AAC over plain http.** The W3C media player (`@amazon-devices/react-native-w3cmedia`) plays an `https://` URL only with a publicly trusted certificate (a local CA is refused). Over `http://` it plays only through Media Source Extensions, and only fragmented MP4 with AAC: raw MP3 through MSE never starts. `./vega` handles both; see [The TV speaks back on Vega](#the-tv-speaks-back-on-vega).
 - **Metro, only when bundling from source.** The package source uses TS-ESM imports (`./protocol.js`), so map them to `.ts` in a custom `resolveRequest`. A custom resolver replaces Vega's own, so also re-apply the `react-native` → `@amazon-devices/react-native-kepler` mapping. Without that mapping the bundle ships core React Native and the app aborts at launch. See [`examples/minimal-vega/metro.config.js`](examples/minimal-vega/metro.config.js).
+- **React Native 0.72 Vega apps (Metro before 0.82).** The subpaths (`tv-voice-bridge/react`, `/vega`, `/qr`) resolve through the package's `exports`, which Metro reads by default only from 0.82 (React Native 0.83 for Vega). On the 0.72 line, turn it on in `metro.config.js`: `mergeConfig(getDefaultConfig(__dirname), { resolver: { unstable_enablePackageExports: true } })`. That switch applies to every package the app bundles, so rebuild and launch once after setting it. This repo's Vega example and its CI typecheck use React Native 0.83; the 0.72 setting is not tested here.
 - **`performance.timeOrigin`.** It may be missing on some runtimes. The client falls back on its own; polyfill it as `Date.now() - performance.now()` if your code stamps `receivedAt` itself.
 
 ## The TV speaks back on Vega
