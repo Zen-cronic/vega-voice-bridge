@@ -85,8 +85,8 @@ describe('the voice loop text-to-speech', () => {
     expect(m4a.args.some((a) => a.startsWith(join(dir, `${id}.`)) && a.endsWith('.polly.mp3'))).toBe(true);
     expect(m4a.args).toEqual(expect.arrayContaining(['-movflags', '+frag_keyframe+empty_moov+default_base_moof']));
     expect(mp3.args).toEqual(expect.arrayContaining(['libmp3lame']));
-    // encoded into work files, then moved into place; nothing else is left
-    expect(readdirSync(dir).sort()).toEqual([`${id}.m4a`, `${id}.mp3`, `${other.id}.m4a`, `${other.id}.mp3`].sort());
+    // encoded into work files, then moved into place with the marker that makes them cached; nothing else is left
+    expect(readdirSync(dir).sort()).toEqual([`${id}.m4a`, `${id}.mp3`, `${id}.ok`, `${other.id}.m4a`, `${other.id}.mp3`, `${other.id}.ok`].sort());
     expect((await tts.clip('Hello there.')).cached).toBe(true);
   });
 
@@ -143,7 +143,7 @@ describe('the voice loop text-to-speech', () => {
     dirs.push(dir);
     const id = 'a'.repeat(16);
     const stale = [`${id}.${DEAD}-1.m4a`, `${id}.${DEAD}-1.wav`, `${id}.${DEAD}-0badf00d-3.polly.txt`, `${id}.${process.pid}-0badf00d-2.mp3`, `${id}.${process.pid}-7.m4a`];
-    const keep = [`${id}.${process.ppid}-cafe0123-1.m4a`, `${id}.m4a`, `${id}.mp3`, 'notes.txt'];
+    const keep = [`${id}.${process.ppid}-cafe0123-1.m4a`, `${id}.m4a`, `${id}.mp3`, `${id}.ok`, 'notes.txt'];
     for (const f of [...stale, ...keep]) writeFileSync(join(dir, f), 'x');
     createTts({ dir, engine: wavEngine, run: encoder() });
     expect(readdirSync(dir).sort()).toEqual([...keep].sort());
@@ -188,7 +188,7 @@ describe('the voice loop text-to-speech', () => {
     release();
     expect((await Promise.allSettled([a, b])).map((r) => r.status)).toEqual(['fulfilled', 'fulfilled']);
     expect(new Set(bases).size).toBe(2);
-    expect(readdirSync(dir).sort()).toEqual([`${(await a).id}.m4a`, `${(await a).id}.mp3`]);
+    expect(readdirSync(dir).sort()).toEqual([`${(await a).id}.m4a`, `${(await a).id}.mp3`, `${(await a).id}.ok`]);
   });
 
   it("a render's cleanup removes only its own files and never hides the render's error", async () => {
@@ -204,5 +204,25 @@ describe('the voice loop text-to-speech', () => {
     writeFileSync(join(dir2, other), 'x');
     await tts.clip('Mine.');
     expect(readdirSync(dir2)).toContain(other);
+  });
+
+  it('a clip is cached only with a marker that matches both files, so an older partial MP3 is rendered again', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tts-'));
+    dirs.push(dir);
+    const { id } = await createTts({ dir, engine: wavEngine, run: encoder() }).clip('Cached?');
+    expect((await createTts({ dir, engine: wavEngine, run: encoder() }).clip('Cached?')).cached).toBe(true);
+    // 0.3.3 left a full .m4a and a .mp3 cut short, with no marker
+    rmSync(join(dir, `${id}.ok`));
+    writeFileSync(join(dir, `${id}.mp3`), 'cut');
+    expect((await createTts({ dir, engine: wavEngine, run: encoder() }).clip('Cached?')).cached).toBe(false);
+    expect(readFileSync(join(dir, `${id}.mp3`), 'utf8')).toBe('partial');
+    // the marker is there but a file changed size since
+    writeFileSync(join(dir, `${id}.mp3`), 'p');
+    expect((await createTts({ dir, engine: wavEngine, run: encoder() }).clip('Cached?')).cached).toBe(false);
+    // an encoder that wrote an empty clip is a failure, not a cached clip
+    const empty = async (_c: string, args: string[]) => writeFileSync(args.at(-1)!, '');
+    rmSync(join(dir, `${id}.ok`));
+    await expect(createTts({ dir, engine: wavEngine, run: empty }).clip('Cached?')).rejects.toThrow(/empty clip/);
+    expect(readdirSync(dir).filter((f) => !/^[0-9a-f]{16}\.(m4a|mp3)$/.test(f))).toEqual([]);
   });
 });

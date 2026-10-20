@@ -6,7 +6,7 @@
 //   ffmpeg does the encoding.
 import { execFile } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { platform } from 'node:os';
 import { join } from 'node:path';
 
@@ -91,6 +91,19 @@ export function sweepWorkFiles(dir) {
   return n;
 }
 
+// A clip is served from the cache only when its marker matches both files: written after both were moved into
+// place, it holds their sizes. A clip from before 0.3.5 (no marker), or one cut short later, is rendered again.
+const isCached = (base) => {
+  try {
+    const ok = JSON.parse(readFileSync(`${base}.ok`, 'utf8'));
+    const m4a = statSync(`${base}.m4a`).size;
+    const mp3 = statSync(`${base}.mp3`).size;
+    return m4a > 0 && mp3 > 0 && ok.m4a === m4a && ok.mp3 === mp3;
+  } catch {
+    return false;
+  }
+};
+
 /**
  * Make (or reuse) the clips for `text`; returns the file id. Two requests for the same clip while it renders share
  * one render (two phones in a room, or the same reply twice), and each render works in files of its own, so one
@@ -108,10 +121,10 @@ export function createTts({ dir, engine = ttsEngine(), run = exec } = {}) {
   const inFlight = new Map();
   const working = new Set(); // this instance's work bases still in use
   const abort = new AbortController();
-  const ownFiles = (work) => [`${work}.m4a`, `${work}.mp3`, ...(engine.outputs ? engine.outputs(work) : [`${work}.wav`])];
+  const ownFiles = (work) => [`${work}.m4a`, `${work}.mp3`, `${work}.ok`, ...(engine.outputs ? engine.outputs(work) : [`${work}.wav`])];
   const make = async (id, text) => {
     const base = join(dir, id);
-    if (existsSync(`${base}.m4a`) && existsSync(`${base}.mp3`)) return { id, cached: true };
+    if (isCached(base)) return { id, cached: true };
     if (abort.signal.aborted) throw new Error('tts: closed');
     const work = join(dir, `${id}.${process.pid}-${token}-${++renders}`);
     working.add(work);
@@ -121,9 +134,13 @@ export function createTts({ dir, engine = ttsEngine(), run = exec } = {}) {
       src = await engine.render(text, work, o);
       await run('ffmpeg', ['-loglevel', 'error', '-i', src, '-c:a', 'aac', '-b:a', '64k', '-ar', '44100', '-ac', '1', '-movflags', '+frag_keyframe+empty_moov+default_base_moof', '-frag_duration', '500000', '-f', 'mp4', '-y', `${work}.m4a`], undefined, o);
       await run('ffmpeg', ['-loglevel', 'error', '-i', src, '-codec:a', 'libmp3lame', '-b:a', '48k', '-ac', '1', '-f', 'mp3', '-y', `${work}.mp3`], undefined, o);
-      // The MP3 first: the hub serves the .m4a, and a clip counts as cached only when both are there.
+      const sizes = { m4a: statSync(`${work}.m4a`).size, mp3: statSync(`${work}.mp3`).size };
+      if (!sizes.m4a || !sizes.mp3) throw new Error('ffmpeg: wrote an empty clip');
+      writeFileSync(`${work}.ok`, JSON.stringify(sizes));
+      remove(`${base}.ok`);
       renameSync(`${work}.mp3`, `${base}.mp3`);
       renameSync(`${work}.m4a`, `${base}.m4a`);
+      renameSync(`${work}.ok`, `${base}.ok`); // last: until it is there, the clip is not cached
     } finally {
       for (const f of new Set([...ownFiles(work), ...(src ? [src] : [])])) remove(f);
       working.delete(work);
