@@ -1,0 +1,39 @@
+name: Bug report
+description: Something in the hub, the client, the phone page or a Vega example does not work as documented.
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: tv-voice-bridge version
+      placeholder: 0.4.0
+    validations:
+      required: true
+  - type: dropdown
+    id: part
+    attributes:
+      label: Which part
+      options:
+        - hub or CLI (tv-voice-bridge/hub, tv-voice-bridge-hub)
+        - client (tv-voice-bridge)
+        - phone page or ./phone
+        - React hook or PairingQr (./react)
+        - Vega say player (./vega)
+        - an example
+        - docs
+    validations:
+      required: true
+  - type: textarea
+    id: where
+    attributes:
+      label: Where it runs
+      description: The TV (Vega Virtual Device, a Fire TV Stick model and OS version, or a web TV), the phone and browser, and Node for the hub.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps, expected and actual
+      description: What you did, what you expected, and what happened. Include the hub's log lines and any error codes (handler-failed, rate-limited, insecure-context...). Leave out pairing codes, resume tokens and audio URLs.
+    validations:
+      required: true

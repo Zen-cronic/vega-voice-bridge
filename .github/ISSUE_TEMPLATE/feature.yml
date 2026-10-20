@@ -1,0 +1,16 @@
+name: Feature or second implementation
+description: A new capability, a platform, or another implementation of the protocol.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What you are building
+      description: The app, TV platform or agent, and what the bridge does not let you do today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: If it touches the wire protocol, say whether it fits within v1 (PROTOCOL.md, section 12).
