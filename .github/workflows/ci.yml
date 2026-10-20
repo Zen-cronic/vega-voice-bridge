@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - name: Install
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Test
+        run: npm test
+        env:
+          # Node 20 has no global WebSocket, which the tests' browser-style clients use.
+          NODE_OPTIONS: ${{ matrix.node == 20 && '--experimental-websocket' || '' }}
+      - name: Build
+        run: npm run build
+      - name: The whole loop from dist/, as `npm run example` runs it
+        run: node examples/loop/loop.mjs
+      - name: Package contents
+        run: npm pack --dry-run
+
+  vega-example:
+    # The Vega voice-loop app type-checked against the real, public React Native for Vega packages
+    # (@amazon-devices/react-native-kepler, @amazon-devices/react-native-w3cmedia), not the test stand-ins,
+    # with this commit's package installed from its packed tarball, as an app would install it.
+    name: Vega example typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci --no-audit --no-fund
+      - name: Pack (writes tv-voice-bridge-<version>.tgz, the file the example depends on)
+        run: npm pack
+      - name: Install the example
+        working-directory: examples/vega-voice-loop/vega
+        run: npm install --no-audit --no-fund --ignore-scripts
+      - name: Typecheck the example
+        working-directory: examples/vega-voice-loop/vega
+        run: npx tsc --noEmit -p .
