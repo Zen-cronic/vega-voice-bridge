@@ -55,6 +55,19 @@ describe('createVegaSayPlayer', () => {
     expect(media.log).toContain('play https://cdn.example.com/a1.mp3');
     expect(fetched).toBe(0);
   });
+  it('httpUrlMode plays plain http in URL mode, with no fetch and no MSE (to check a device that may now allow it)', async () => {
+    let fetched = 0;
+    const p = createVegaSayPlayer({ httpUrlMode: true, fetch: async () => (fetched++, clip()()) });
+    for (const url of ['http://192.168.1.20:8790/tts/a1.m4a', 'http://192.168.1.20:8790/tts/a1.mp3']) {
+      media.reset();
+      const r = run(p, line(url));
+      await r.done;
+      expect(r.seen, url).toEqual(['playing', 'ended']);
+      expect(media.log).toContain(`play ${url}`);
+      expect(media.log.some((e) => e.startsWith('addSourceBuffer'))).toBe(false);
+    }
+    expect(fetched).toBe(0);
+  });
   it('an https line after a plain-http one plays its URL, not the stream the last line left', async () => {
     const p = createVegaSayPlayer({ fetch: clip() });
     await run(p, line('http://127.0.0.1:8790/tts/a1.m4a')).done;

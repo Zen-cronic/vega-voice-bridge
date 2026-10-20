@@ -19,6 +19,12 @@ export interface VegaSayPlayerOptions {
   baseUrl?: string;
   /** How long to wait for the demuxer to take the stream before ending it. Default 3000 ms. */
   eosWaitMs?: number;
+  /**
+   * Play plain-http URLs in URL mode too, as https ones are, instead of through MSE. Off by default: Vega refused
+   * cleartext media in URL mode (MediaError 4, "insecure protocol/scheme http"), and Amazon said in October 2026
+   * that a September 2026 OS update fixed it, which no one has confirmed. Turn it on only to check a device.
+   */
+  httpUrlMode?: boolean;
   /** Default: the global fetch. */
   fetch?: (url: string) => Promise<{ ok: boolean; status: number; headers: { get(name: string): string | null }; arrayBuffer(): Promise<ArrayBuffer> }>;
 }
@@ -134,7 +140,7 @@ export function createVegaSayPlayer(opts: VegaSayPlayerOptions = {}): VegaSayPla
       if (!live()) return;
       if (!p) return ctl.error('the Vega media player is unavailable');
       held = p;
-      if (/^https:/i.test(url)) {
+      if (/^https:/i.test(url) || opts.httpUrlMode) {
         claim();
         // Setting src replaces a stream an earlier http line attached. Vega throws on srcObject = null.
         p.src = url;
