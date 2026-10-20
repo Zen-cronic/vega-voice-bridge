@@ -1,5 +1,9 @@
-// Release hygiene: the workflows never publish to npm, and the version is the same everywhere a release reads it.
-import { readFileSync, readdirSync } from 'node:fs';
+// Release hygiene: the workflows never publish to npm, the version is the same everywhere a release reads it, and
+// no step a guide asks for writes a LAN address into a tracked file.
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 // @ts-expect-error: a plain .mjs script
 import { releaseNotes } from '../scripts/release-notes.mjs';
@@ -40,5 +44,27 @@ describe('releases', () => {
     expect(example.dependencies['tv-voice-bridge']).toBe(`file:../../../tv-voice-bridge-${pkg.version}.tgz`);
     const lock = JSON.parse(read('package-lock.json')) as { version: string; packages: Record<string, { version?: string }> };
     expect([lock.version, lock.packages['']?.version]).toEqual([pkg.version, pkg.version]);
+  });
+
+  it("L160: the Vega example's `npm run hub` writes its address to a file git ignores; the tracked hub.json stays on loopback", () => {
+    const app = 'examples/vega-voice-loop/vega';
+    // The tracked default is the reverse port forward's address, never a LAN one.
+    expect(JSON.parse(read(`${app}/src/hub.json`))).toEqual({ hostport: '127.0.0.1:8790' });
+    // `npm run hub -- <LAN address>`, as the stick run's fallback runs it, in a scratch copy of the app.
+    const dir = mkdtempSync(join(tmpdir(), 'tvb-hub-json-'));
+    try {
+      mkdirSync(join(dir, 'src'));
+      writeFileSync(join(dir, 'package.json'), read(`${app}/package.json`));
+      writeFileSync(join(dir, 'src/hub.json'), read(`${app}/src/hub.json`));
+      execFileSync('npm', ['run', '--silent', 'hub', '--', '192.0.2.10:8790', '--http-url-mode'], { cwd: dir, stdio: 'pipe' });
+      expect(readFileSync(join(dir, 'src/hub.json'), 'utf8')).toBe(read(`${app}/src/hub.json`));
+      expect(JSON.parse(readFileSync(join(dir, 'src/hub.local.json'), 'utf8'))).toEqual({ hostport: '192.0.2.10:8790', httpUrlMode: true });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    expect(read(`${app}/.gitignore`).split('\n')).toContain('src/hub.local.json');
+    // The app prefers the local file, required inside a try (an optional dependency for Metro), and falls back on the
+    // tracked one when there is none.
+    expect(read(`${app}/src/App.tsx`)).toMatch(/try \{\s*const local = require\('\.\/hub\.local\.json'\)[^}]*\} catch \{[^}]*\}\s*return hubDefault;/);
   });
 });

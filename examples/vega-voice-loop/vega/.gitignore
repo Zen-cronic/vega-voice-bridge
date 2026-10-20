@@ -5,3 +5,5 @@ buildinfo.json
 package-lock.json
 npm-debug.log
 .tmp
+# npm run hub writes the hub's address here (a LAN address on a stick); src/hub.json is the tracked default
+src/hub.local.json

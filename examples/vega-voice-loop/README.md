@@ -33,7 +33,7 @@ node examples/vega-voice-loop/phone.mjs <CODE>
 
 The QR opens the phone page this hub serves, at this machine's LAN address (`--public-url` overrides it). The hub checks `Origin` as the CLI does: the pages it served, the `--public-url` page and clients that send no `Origin` (the Vega app) connect, and a page on another site gets 403 and one `{"event":"origin-refused",...}` line. `--any-origin` turns the check off. Browsers allow speech recognition only on https or localhost, so over plain http the page says so and offers typing; [docs/https.md](../../docs/https.md) has the ways to turn voice on (a tunnel with `--public-url`, or Chrome's developer flag on your own Android phone).
 
-On a Fire TV Stick, either keep `127.0.0.1:8790` and add the same reverse port forward to the stick (`-d <stick IP>:5555`), or set `npm run hub -- <LAN IP>:8790` before building; then run the `armv7` or `aarch64` package. [scripts/stick-run.md](../../scripts/stick-run.md) is the measured run, step by step.
+On a Fire TV Stick, either keep `127.0.0.1:8790` and add the same reverse port forward to the stick (`-d <stick IP>:5555`), or set `npm run hub -- <LAN IP>:8790` before building (it writes `vega/src/hub.local.json`, which git ignores and the app reads before the tracked `vega/src/hub.json`); then run the `armv7` or `aarch64` package. [scripts/stick-run.md](../../scripts/stick-run.md) is the measured run, step by step.
 
 ## What to change
 

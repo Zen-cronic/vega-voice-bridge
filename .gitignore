@@ -23,3 +23,7 @@ AGENTS.md
 # examples/vega-voice-loop: generated speech clips and local listening samples
 examples/vega-voice-loop/.tts/
 examples/vega-voice-loop/samples/
+
+# scripts/stick-run.md: the run's numbers and the filmed clip, which belong outside the repo (*.log covers its logs)
+/bench-*.json
+/clip.mp4

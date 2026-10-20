@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "hub": "node -e \"require('fs').writeFileSync('src/hub.json', JSON.stringify({hostport: process.argv[1] || '127.0.0.1:8790', ...(process.argv[2] === '--http-url-mode' ? {httpUrlMode: true} : {})}) + '\\\\n')\"",
+    "hub": "node -e \"require('fs').writeFileSync('src/hub.local.json', JSON.stringify({hostport: process.argv[1] || '127.0.0.1:8790', ...(process.argv[2] === '--http-url-mode' ? {httpUrlMode: true} : {})}) + '\\\\n')\"",
     "build": "react-native build-vega --build-type Release",
     "build:debug": "react-native build-vega --build-type Debug"
   },

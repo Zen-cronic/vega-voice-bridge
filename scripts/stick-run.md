@@ -4,7 +4,7 @@ The run that turns the README's "pending" column into measured numbers: the Vega
 
 **Who:** the operator (the stick, the phone, a speaker, filming, any tunnel) and an agent or second person at the dev machine (hub, commands, numbers). **Time:** about 90 minutes. **Never fill a number in by hand:** every number comes from `scripts/bench.mjs` over a hub log written during the run.
 
-Produces, in a scratch folder outside the repo (they show room codes): `r1-scripted.log`, `r1-phone.log`, `r1-checks.log`, `bench-scripted.json`, `bench-phone.json`, the clip, the GIF, and the notes in [Results](#results).
+Produces `r1-scripted.log`, `r1-phone.log`, `r1-checks.log`, `bench-scripted.json`, `bench-phone.json` and the clip (`clip.mp4`) in the repo root, where git ignores them (they show room codes: move them to a scratch folder outside the repo afterwards), the GIF in `docs/`, and the notes in [Results](#results).
 
 ## 0. Before you start
 
@@ -22,7 +22,7 @@ Produces, in a scratch folder outside the repo (they show room codes): `r1-scrip
 npm ci && npm pack                                   # tv-voice-bridge-0.4.0.tgz at the repo root
 cd examples/vega-voice-loop/vega
 npm install && npm install ../../../tv-voice-bridge-0.4.0.tgz   # refreshes a stale bridge in node_modules
-npm run hub -- 127.0.0.1:8790                        # the app dials the hub through the reverse forward
+npm run hub -- 127.0.0.1:8790                        # the app dials the hub through the reverse forward (src/hub.local.json)
 npm run build                                        # build/armv7-release/tv-voice-bridge-voiceloop_armv7.vpkg
 cd ../../..
 ```
@@ -47,7 +47,7 @@ vega run-app examples/vega-voice-loop/vega/build/armv7-release/tv-voice-bridge-v
 vega device is-app-running -d $D --appName com.tvvoicebridge.loop.main
 ```
 
-The TV shows VOICE LOOP, a QR and a 4-character code, and the hub prints `{"event":"join",...,"role":"screen",...}`. If the TV shows nothing, `vega device launch-app -d $D --appName com.tvvoicebridge.loop.main`. If the reverse forward does not work over Wi-Fi, rebuild with `npm run hub -- <dev machine LAN IP>:8790` (step 1) and skip the forward.
+The TV shows VOICE LOOP, a QR and a 4-character code, and the hub prints `{"event":"join",...,"role":"screen",...}`. If the TV shows nothing, `vega device launch-app -d $D --appName com.tvvoicebridge.loop.main`. If the reverse forward does not work over Wi-Fi, rebuild with `npm run hub -- <dev machine LAN IP>:8790` (step 1) and skip the forward. The address goes into `src/hub.local.json`, which git ignores; the tracked `src/hub.json` keeps `127.0.0.1:8790`.
 
 **Check: the `Origin` the Vega app sends.** Copy the `origin` field of the screen's join line into the results (`null` means no `Origin` header). The hub checks `Origin` as the CLI does and admits a client that sends none. If the TV never pairs and the hub prints `{"event":"origin-refused","origin":...}` instead of a join, copy that `origin` into the results and restart the hub with `--any-origin` for the rest of the run.
 
@@ -137,6 +137,7 @@ Keep it under about 5 MB. Optional, for the agent beat: one real model call, wit
 
 - **Retire the filmed code:** relaunch the app (`terminate-app`, then `run-app`); the old room closes a minute later.
 - `vega device stop-port-forwarding -d $D --port 8790 --forward false`; stop any tunnel.
+- **Back to the default address:** `rm -f examples/vega-voice-loop/vega/src/hub.local.json`, so the next build dials `127.0.0.1:8790` again. `git status` then shows only what you meant to change (the GIF and the docs below): git ignores the local address file, the logs, `bench-*.json` and `clip.mp4`.
 - **Fill the placeholders from the JSON, never by hand:**
   - `README.md`: the `R1 PLACEHOLDER` block at the top (the GIF and its caption: `heardMs` p50 and p95, N, the phone and browser) and the "Fire TV Stick, real phone" column (p50 / p95 per leg from `bench-phone.json`, with `bench-scripted.json` alongside if it helps); then remove the placeholder comments and the matching check in `test/docs.test.ts`.
   - `docs/vega-notes.md`: the three **To test on the stick** items (plain-http URL mode, the Alexa button, the `Origin`).

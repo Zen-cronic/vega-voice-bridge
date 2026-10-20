@@ -4,17 +4,28 @@ import React, {useEffect, useMemo, useState} from 'react';
 import {StyleSheet, Text, View} from 'react-native';
 import {PairingQr, useVoiceBridge} from 'tv-voice-bridge/react';
 import {createVegaSayPlayer} from 'tv-voice-bridge/vega';
-import hub from './hub.json';
+import hubDefault from './hub.json';
+
+type HubConfig = {hostport: string; httpUrlMode?: boolean};
+// Where the hub is: src/hub.local.json when `npm run hub` wrote one (git ignores it, so a LAN address never lands in
+// a tracked file), else the tracked src/hub.json, 127.0.0.1:8790 through a reverse port forward. Metro bundles a
+// require inside a try as optional, so a checkout without the local file builds, and requiring it then throws.
+const hub: HubConfig = (() => {
+  try {
+    const local = require('./hub.local.json') as Partial<HubConfig> | undefined;
+    if (typeof local?.hostport === 'string') return local as HubConfig;
+  } catch {
+    // no local file
+  }
+  return hubDefault;
+})();
 
 type Row = {sayId?: string; said: string; shownMs: number | null; sayToPlayingMs: number | null; heardMs: number | null};
 
 export function App() {
-  // hub.json "httpUrlMode": true plays http clips in URL mode instead of MSE: the stick run's check of whether the
-  // OS now allows cleartext media (scripts/stick-run.md). Leave it off otherwise.
-  const player = useMemo(
-    () => createVegaSayPlayer({baseUrl: `http://${hub.hostport}`, httpUrlMode: (hub as {httpUrlMode?: boolean}).httpUrlMode === true}),
-    [],
-  );
+  // "httpUrlMode": true (npm run hub -- <host:port> --http-url-mode) plays http clips in URL mode instead of MSE: the
+  // stick run's check of whether the OS now allows cleartext media (scripts/stick-run.md). Leave it off otherwise.
+  const player = useMemo(() => createVegaSayPlayer({baseUrl: `http://${hub.hostport}`, httpUrlMode: hub.httpUrlMode === true}), []);
   useEffect(() => {
     void player.warm(); // the first reply is not delayed by the media player's start-up
     return () => void player.dispose();
