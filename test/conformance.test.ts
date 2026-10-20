@@ -16,6 +16,7 @@ import {
   SAY_TOPIC,
   SPEECH_TOPIC,
   decode,
+  decodeMessage,
   encode,
   isSayStatusTopic,
   parseSay,
@@ -27,6 +28,7 @@ import {
   type BridgeMessage,
   type SayPayload,
 } from '../src/index.js';
+import wire from './vectors/wire.json' with { type: 'json' };
 
 let server: Server;
 let hub: BridgeHub;
@@ -89,59 +91,29 @@ afterEach(async () => {
   await new Promise((r) => server.close(r));
 });
 
-describe('wire format', () => {
-  const vectors: Array<[string, BridgeMessage]> = [
-    ['hello', { type: 'hello', v: 1, role: 'screen', clientId: 'screen_1' }],
-    ['hello (mic with code)', { type: 'hello', v: 1, role: 'mic', clientId: 'mic_1', code: 'K7QF', name: 'Zin' }],
-    ['welcome', { type: 'welcome', v: 1, clientId: 'mic_1', role: 'mic', code: 'K7QF', joinUrl: 'https://tv.example/p/K7QF', peers: [], serverTime: 1 }],
-    ['peers', { type: 'peers', peers: [{ clientId: 'a', role: 'screen' }] }],
-    ['hello (with resumeToken)', { type: 'hello', v: 1, role: 'screen', clientId: 'screen_1', code: 'K7QF', resumeToken: '0f1e2d3c4b5a69788796a5b4c3d2e1f0' }],
-    ['error', { type: 'error', code: 'unknown-code', message: 'no TV is showing code ZZZZ' }],
-    ['error (rate-limited)', { type: 'error', code: 'rate-limited', message: 'too many wrong codes', retryAfterMs: 42000 }],
-    ['ping', { type: 'ping', t0: 1 }],
-    ['pong', { type: 'pong', t0: 1, serverTime: 2 }],
-    ['transcript.partial', { type: 'transcript.partial', utteranceId: 'u1', text: 'six with', hops: [{ hop: 'mic.partial', at: 1 }] }],
-    ['transcript.final', { type: 'transcript.final', utteranceId: 'u1', text: 'six with ten pounds', hops: [{ hop: 'mic.send', at: 1 }] }],
-    ['intent', { type: 'intent', utteranceId: 'u1', name: 'log_set', ok: true, payload: {}, hops: [] }],
-    ['ack', { type: 'ack', utteranceId: 'u1', stage: 'rendered', hops: [] }],
-    ['app', { type: 'app', topic: SAY_TOPIC, payload: { id: 's1', text: 'Logged.' } }],
-    ['app (screen.speech)', { type: 'app', topic: SPEECH_TOPIC, payload: { id: 's1', state: 'queued', at: 5, text: 'Logged.', durationMs: 900 } }],
-    ['app (screen.say.stop)', { type: 'app', topic: SAY_STOP_TOPIC, payload: { id: 's1', reason: 'barge-in' }, from: 'mic_1' }],
-  ];
+describe('wire format (test/vectors/wire.json, shared with test/hub-conformance.test.ts)', () => {
+  const vectors = wire.valid.map((v) => [v.name, v.message as BridgeMessage] as const);
   it.each(vectors)('%s round-trips through encode/decode unchanged', (_n, m) => {
     expect(decode(encode(m))).toEqual(m);
   });
-  it('rejects malformed frames', () => {
-    for (const bad of [
-      '',
-      '[]',
-      'null',
-      '42',
-      '{"type":1}',
-      '{"type":"nope"}',
-      '{"type":"hello","v":1,"role":"remote","clientId":"x"}',
-      '{"type":"hello","v":1,"role":"mic","clientId":"x","code":1234}',
-      '{"type":"hello","v":1,"role":"mic","clientId":""}',
-      '{"type":"transcript.final","utteranceId":"u"}',
-      '{"type":"transcript.final","utteranceId":"u","text":"x","hops":[{"hop":"a","at":"1"}]}',
-      '{"type":"ack","utteranceId":"u","hops":"x"}',
-      '{"type":"ack","utteranceId":"u","stage":"done","hops":[]}',
-      '{"type":"intent","utteranceId":"u","name":"n","ok":"yes","payload":1,"hops":[]}',
-      '{"type":"app","payload":1}',
-      '{"type":"ping","t0":null}',
-    ])
-      expect(decode(bad)).toBeNull();
+  it('the vectors cover every message type', () => {
+    expect(new Set(wire.valid.map((v) => v.message.type))).toEqual(new Set(['hello', 'welcome', 'peers', 'error', 'ping', 'pong', 'transcript.partial', 'transcript.final', 'intent', 'ack', 'app']));
   });
-  it('optional fields may be null (dropped) and missing hops default to []', () => {
-    expect(decode('{"type":"hello","v":1,"role":"mic","clientId":"m","code":"K7QF","name":null}')).toEqual({ type: 'hello', v: 1, role: 'mic', clientId: 'm', code: 'K7QF' });
-    expect(decode('{"type":"transcript.final","utteranceId":"u","text":"x"}')).toEqual({ type: 'transcript.final', utteranceId: 'u', text: 'x', hops: [] });
+  it.each(wire.invalid.map((v) => [v.name, v] as const))('rejects a malformed frame: %s', (_n, v) => {
+    expect(decode(v.frame)).toBeNull();
+    const r = decodeMessage(v.frame);
+    if (!r.ok && 'error' in v && v.error) expect(r.error).toContain(v.error);
+  });
+  it.each(wire.normalized.map((v) => [v.name, v] as const))('normalizes: %s', (_n, v) => {
+    expect(decode(v.frame)).toEqual(v.decoded);
   });
   it('a hello for another protocol version decodes, so the hub can answer "version" rather than bad-message', () => {
     expect(decode('{"type":"hello","v":2,"role":"tv","clientId":5}')).toMatchObject({ type: 'hello', v: 2 });
   });
-  it('protocol constants are stable', () => {
+  it('protocol constants are stable, and match the vectors file', () => {
     expect(PROTOCOL_VERSION).toBe(1);
     expect(CODE_ALPHABET).toBe('ABCDEFGHJKMNPQRSTUVWXYZ23456789');
+    expect([wire.protocolVersion, wire.codeAlphabet]).toEqual([PROTOCOL_VERSION, CODE_ALPHABET]);
     expect([SAY_TOPIC, SAY_STATUS_TOPIC]).toEqual(['screen.say', 'screen.say.status']);
     expect([SPEECH_TOPIC, SAY_STOP_TOPIC]).toEqual(['screen.speech', 'screen.say.stop']);
   });

@@ -1,0 +1,51 @@
+{
+  "about": "Wire vectors for tv-voice-bridge protocol v1 (PROTOCOL.md). `valid`: messages a conforming decoder accepts unchanged (encode, then decode, gives the same object). `invalid`: frames it must refuse; a hub answers each with error bad-message. `normalized`: frames that decode to `decoded` (null optional fields dropped, missing hops read as []). Any language can load this file.",
+  "protocolVersion": 1,
+  "codeAlphabet": "ABCDEFGHJKMNPQRSTUVWXYZ23456789",
+  "valid": [
+    { "name": "hello", "message": { "type": "hello", "v": 1, "role": "screen", "clientId": "screen_1" } },
+    { "name": "hello (mic with code)", "message": { "type": "hello", "v": 1, "role": "mic", "clientId": "mic_1", "code": "K7QF", "name": "Zin" } },
+    { "name": "welcome", "message": { "type": "welcome", "v": 1, "clientId": "mic_1", "role": "mic", "code": "K7QF", "joinUrl": "https://tv.example/p/K7QF", "peers": [], "serverTime": 1 } },
+    { "name": "peers", "message": { "type": "peers", "peers": [{ "clientId": "a", "role": "screen" }] } },
+    { "name": "hello (with resumeToken)", "message": { "type": "hello", "v": 1, "role": "screen", "clientId": "screen_1", "code": "K7QF", "resumeToken": "0f1e2d3c4b5a69788796a5b4c3d2e1f0" } },
+    { "name": "error", "message": { "type": "error", "code": "unknown-code", "message": "no TV is showing code ZZZZ" } },
+    { "name": "error (rate-limited)", "message": { "type": "error", "code": "rate-limited", "message": "too many wrong codes", "retryAfterMs": 42000 } },
+    { "name": "error (handler-failed)", "message": { "type": "error", "code": "handler-failed", "message": "handler failed", "utteranceId": "u1" } },
+    { "name": "ping", "message": { "type": "ping", "t0": 1 } },
+    { "name": "pong", "message": { "type": "pong", "t0": 1, "serverTime": 2 } },
+    { "name": "transcript.partial", "message": { "type": "transcript.partial", "utteranceId": "u1", "text": "six with", "hops": [{ "hop": "mic.partial", "at": 1 }] } },
+    { "name": "transcript.final", "message": { "type": "transcript.final", "utteranceId": "u1", "text": "six with ten pounds", "hops": [{ "hop": "mic.send", "at": 1 }] } },
+    { "name": "intent", "message": { "type": "intent", "utteranceId": "u1", "name": "log_set", "ok": true, "payload": {}, "hops": [] } },
+    { "name": "ack", "message": { "type": "ack", "utteranceId": "u1", "stage": "rendered", "hops": [] } },
+    { "name": "app", "message": { "type": "app", "topic": "screen.say", "payload": { "id": "s1", "text": "Logged." } } },
+    { "name": "app (screen.speech)", "message": { "type": "app", "topic": "screen.speech", "payload": { "id": "s1", "state": "queued", "at": 5, "text": "Logged.", "durationMs": 900 } } },
+    { "name": "app (screen.say.stop)", "message": { "type": "app", "topic": "screen.say.stop", "payload": { "id": "s1", "reason": "barge-in" }, "from": "mic_1" } }
+  ],
+  "invalid": [
+    { "name": "empty frame", "frame": "" },
+    { "name": "an array", "frame": "[]" },
+    { "name": "null", "frame": "null" },
+    { "name": "a number", "frame": "42" },
+    { "name": "type not a string", "frame": "{\"type\":1}" },
+    { "name": "unknown type", "frame": "{\"type\":\"nope\"}" },
+    { "name": "unknown role", "frame": "{\"type\":\"hello\",\"v\":1,\"role\":\"remote\",\"clientId\":\"x\"}", "error": "hello.role" },
+    { "name": "code not a string", "frame": "{\"type\":\"hello\",\"v\":1,\"role\":\"mic\",\"clientId\":\"x\",\"code\":1234}", "error": "hello.code must be a string" },
+    { "name": "empty clientId", "frame": "{\"type\":\"hello\",\"v\":1,\"role\":\"mic\",\"clientId\":\"\"}", "error": "hello.clientId" },
+    { "name": "clientId too long", "frame": "{\"type\":\"hello\",\"v\":1,\"role\":\"mic\",\"clientId\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"}", "error": "hello.clientId must be 1..128" },
+    { "name": "v not a number", "frame": "{\"type\":\"hello\",\"v\":\"1\",\"role\":\"mic\",\"clientId\":\"x\"}", "error": "hello.v must be a number" },
+    { "name": "final without text", "frame": "{\"type\":\"transcript.final\",\"utteranceId\":\"u\"}" },
+    { "name": "a hop's at not a number", "frame": "{\"type\":\"transcript.final\",\"utteranceId\":\"u\",\"text\":\"x\",\"hops\":[{\"hop\":\"a\",\"at\":\"1\"}]}", "error": "hops entries" },
+    { "name": "a null hop", "frame": "{\"type\":\"transcript.final\",\"utteranceId\":\"u\",\"text\":\"x\",\"hops\":[null]}", "error": "hops entries" },
+    { "name": "hops not an array", "frame": "{\"type\":\"ack\",\"utteranceId\":\"u\",\"hops\":\"x\"}" },
+    { "name": "unknown ack stage", "frame": "{\"type\":\"ack\",\"utteranceId\":\"u\",\"stage\":\"done\",\"hops\":[]}" },
+    { "name": "ok not a boolean", "frame": "{\"type\":\"intent\",\"utteranceId\":\"u\",\"name\":\"n\",\"ok\":\"yes\",\"payload\":1,\"hops\":[]}" },
+    { "name": "app without topic", "frame": "{\"type\":\"app\",\"payload\":1}" },
+    { "name": "topic not a string", "frame": "{\"type\":\"app\",\"topic\":5,\"payload\":1}", "error": "app.topic must be a string" },
+    { "name": "t0 null", "frame": "{\"type\":\"ping\",\"t0\":null}" },
+    { "name": "t0 not a number", "frame": "{\"type\":\"ping\",\"t0\":\"now\"}", "error": "ping.t0 must be a finite number" }
+  ],
+  "normalized": [
+    { "name": "a null optional field is dropped", "frame": "{\"type\":\"hello\",\"v\":1,\"role\":\"mic\",\"clientId\":\"m\",\"code\":\"K7QF\",\"name\":null}", "decoded": { "type": "hello", "v": 1, "role": "mic", "clientId": "m", "code": "K7QF" } },
+    { "name": "missing hops read as []", "frame": "{\"type\":\"transcript.final\",\"utteranceId\":\"u\",\"text\":\"x\"}", "decoded": { "type": "transcript.final", "utteranceId": "u", "text": "x", "hops": [] } }
+  ]
+}

@@ -84,7 +84,8 @@
     "example": "npm run build --silent && node examples/loop/loop.mjs",
     "hub": "npm run build --silent && node dist/cli.js",
     "clean": "rm -rf dist *.tgz",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "conformance": "vitest run test/hub-conformance.test.ts"
   },
   "engines": {
     "node": ">=20"
