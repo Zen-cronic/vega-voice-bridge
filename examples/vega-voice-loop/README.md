@@ -20,10 +20,12 @@ node examples/vega-voice-loop/hub.mjs
 
 # 3. the TV app
 cd examples/vega-voice-loop/vega
-npm install && npm run hub -- 127.0.0.1:8790 && npm run build
+npm install && npm install ../../../tv-voice-bridge-0.4.0.tgz   # the second install refreshes the bridge after a new pack
+npm run hub -- 127.0.0.1:8790 && npm run build                 # build/<arch>-release/tv-voice-bridge-voiceloop_<arch>.vpkg
 vega virtual-device start
 vega device start-port-forwarding -d VirtualDevice --port 8790 --forward false   # the VVD reaches the hub at 127.0.0.1
-vega run-app build/x86_64-release/voiceloop_x86_64.vpkg com.tvvoicebridge.loop.main -d VirtualDevice
+vega device terminate-app -d VirtualDevice --appName com.tvvoicebridge.loop.main  # run-app does not restart a running app
+vega run-app build/x86_64-release/tv-voice-bridge-voiceloop_x86_64.vpkg com.tvvoicebridge.loop.main -d VirtualDevice
 
 # 4. a phone: the scripted one (the TV shows the code), or a real phone on the same Wi-Fi scanning the TV's QR
 node examples/vega-voice-loop/phone.mjs <CODE>
@@ -31,7 +33,7 @@ node examples/vega-voice-loop/phone.mjs <CODE>
 
 The QR opens the phone page this hub serves, at this machine's LAN address (`--public-url` overrides it). Browsers allow speech recognition only on https or localhost, so over plain http the page says so and offers typing; [docs/https.md](../../docs/https.md) has the ways to turn voice on (a tunnel with `--public-url`, or Chrome's developer flag on your own Android phone).
 
-On a Fire TV Stick, set `npm run hub -- <LAN IP>:8790` before building, and install the `armv7` or `aarch64` package.
+On a Fire TV Stick, either keep `127.0.0.1:8790` and add the same reverse port forward to the stick (`-d <stick IP>:5555`), or set `npm run hub -- <LAN IP>:8790` before building; then run the `armv7` or `aarch64` package. [scripts/stick-run.md](../../scripts/stick-run.md) is the measured run, step by step.
 
 ## What to change
 

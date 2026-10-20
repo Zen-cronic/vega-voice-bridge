@@ -1,5 +1,5 @@
 {
-  "name": "@amazon-devices/voiceloop",
+  "name": "tv-voice-bridge-voiceloop",
   "version": "0.0.1",
   "private": true,
   "scripts": {
