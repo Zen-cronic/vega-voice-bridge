@@ -90,6 +90,14 @@ describe('RESPOND_CMD: your agent as a command', () => {
     await expect(runCommand('echo nope >&2; exit 2')).rejects.toThrow(/exited 2: nope/);
     expect(await runCommand('cat', { input: 'echoed' })).toBe('echoed');
   });
+
+  it('L158: a character split across two writes comes back whole, on stdout and stderr, and maxBytes counts bytes', async () => {
+    // "é" is \303\251 in UTF-8 and "à" is \303\240: each first write ends inside one, as a streaming model runner's can.
+    expect(await runCommand("printf 'Caf\\303'; sleep 0.2; printf '\\251 ouvert.'")).toBe('Café ouvert.');
+    await expect(runCommand("printf 'd\\303' >&2; sleep 0.2; printf '\\251j\\303' >&2; sleep 0.2; printf '\\240 vu' >&2; exit 1")).rejects.toThrow(/exited 1: déjà vu$/);
+    // Two bytes a character: a 4-byte cap keeps two of them.
+    expect(await runCommand("printf 'ééé'", { maxBytes: 4 })).toBe('éé');
+  });
 });
 
 describe('agents/bedrock.mjs (against a stand-in for the AWS CLI)', () => {

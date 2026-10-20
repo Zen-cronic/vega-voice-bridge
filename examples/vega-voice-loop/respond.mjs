@@ -22,16 +22,31 @@ export function offlineRespond(text) {
   return `You said: ${text}`;
 }
 
+/** The first `max` bytes of a stream, decoded once at the end, so a UTF-8 character split across chunks stays whole. */
+function capped(max) {
+  const chunks = [];
+  let bytes = 0;
+  return {
+    add(d) {
+      if (bytes >= max) return;
+      const part = d.subarray(0, max - bytes);
+      chunks.push(part);
+      bytes += part.length;
+    },
+    text: () => Buffer.concat(chunks).toString('utf8'),
+  };
+}
+
 /**
  * Run `cmd` with `sh -c`: `input` on stdin, in exactly the environment `env` (default: this process's).
- * Resolves stdout; rejects on a non-zero exit or the timeout.
+ * Resolves stdout (its first `maxBytes` bytes); rejects on a non-zero exit or the timeout.
  */
 export function runCommand(cmd, { input = '', env = process.env, timeoutMs = 8000, maxBytes = 64 * 1024 } = {}) {
   return new Promise((resolve, reject) => {
     // Its own process group, so a timeout also stops whatever the shell started (an AWS CLI call, a model runner).
     const child = spawn('sh', ['-c', cmd], { env, stdio: ['pipe', 'pipe', 'pipe'], detached: true });
-    let out = '';
-    let err = '';
+    const out = capped(maxBytes);
+    const err = capped(2000);
     let done = false;
     const finish = (fn) => {
       if (done) return;
@@ -47,15 +62,15 @@ export function runCommand(cmd, { input = '', env = process.env, timeoutMs = 800
       }
     };
     const timer = setTimeout(() => finish(() => (killGroup(), reject(new Error(`RESPOND_CMD timed out after ${timeoutMs} ms`)))), timeoutMs);
-    child.stdout.on('data', (d) => {
-      if (out.length < maxBytes) out += d;
-    });
-    child.stderr.on('data', (d) => {
-      if (err.length < 2000) err += d;
-    });
+    child.stdout.on('data', out.add);
+    child.stderr.on('data', err.add);
     child.on('error', (e) => finish(() => reject(e)));
     child.on('close', (code, signal) =>
-      finish(() => (code === 0 ? resolve(out) : reject(new Error(`RESPOND_CMD exited ${signal ?? code}${err.trim() ? `: ${err.trim().slice(0, 300)}` : ''}`)))),
+      finish(() => {
+        if (code === 0) return resolve(out.text());
+        const why = err.text().trim();
+        reject(new Error(`RESPOND_CMD exited ${signal ?? code}${why ? `: ${why.slice(0, 300)}` : ''}`));
+      }),
     );
     child.stdin.on('error', () => undefined); // a command that never reads stdin
     child.stdin.end(input);
