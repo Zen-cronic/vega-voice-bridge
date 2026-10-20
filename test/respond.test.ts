@@ -1,10 +1,11 @@
-// examples/vega-voice-loop: the agent behind RESPOND_CMD, and the loop's answer when it fails. No model is called:
-// every command here is a shell one-liner or a stand-in for the AWS CLI.
+// examples/vega-voice-loop: the agent behind RESPOND_CMD, the loop's answer when it fails, and its hub's Origin
+// check. No model is called: every command here is a shell one-liner or a stand-in for the AWS CLI.
 import { chmodSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
+import WebSocket from 'ws';
 import { BridgeClient, type BridgeMessage, type IntentMsg, type SayPayload } from '../src/index.js';
 // @ts-expect-error: a plain .mjs example module
 import { FALLBACK, cleanReply, createResponder, offlineRespond, runCommand } from '../examples/vega-voice-loop/respond.mjs';
@@ -194,5 +195,38 @@ describe('the voice loop when the agent fails (RESPOND_CMD=false)', () => {
     const said = new Promise<Required<SayPayload>>((r) => tv.onSay(r));
     phone.sendFinal('hello');
     expect((await said).text).toBe('The agent heard: hello');
+  });
+});
+
+describe("the voice loop hub's Origin check, the CLI's", () => {
+  const tts = { engine: 'none (test)', clip: async () => null, close: async () => undefined };
+  const opened = (port: number, origin?: string) =>
+    new Promise<'open' | number>((resolve) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`, { headers: origin ? { origin } : {} });
+      ws.on('open', () => (resolve('open'), ws.terminate()));
+      ws.on('unexpected-response', (_q, res) => resolve(res.statusCode ?? 0));
+      ws.on('error', () => undefined);
+    });
+
+  it('L159: its own pages, the --public-url page and clients with no Origin connect; a page on another site gets 403, logged once', async () => {
+    const events: Array<Record<string, unknown>> = [];
+    const loop = await startVoiceLoop({ port: 0, host: '127.0.0.1', publicUrl: 'https://tv.example/', responder: createResponder({ env: {} }), tts, log: (e: Record<string, unknown>) => events.push(e) });
+    open.push(() => loop.close());
+    expect(await opened(loop.port)).toBe('open'); // the Vega app, the scripted phone: no Origin
+    expect(await opened(loop.port, `http://127.0.0.1:${loop.port}`)).toBe('open'); // the phone page this hub served
+    expect(await opened(loop.port, 'https://tv.example')).toBe('open'); // the same page through the tunnel
+    expect(await opened(loop.port, 'https://evil.example')).toBe(403);
+    expect(await opened(loop.port, 'https://evil.example')).toBe(403);
+    expect(loop.hub.stats.originRefused).toBe(2);
+    expect(events.filter((e) => e.event === 'origin-refused')).toEqual([{ event: 'origin-refused', origin: 'https://evil.example' }]);
+    expect(events.find((e) => e.event === 'ready')).toMatchObject({ publicUrl: 'https://tv.example', originCheck: 'pages this hub served, and https://tv.example' });
+  });
+
+  it('anyOrigin (--any-origin) turns it off', async () => {
+    const events: Array<Record<string, unknown>> = [];
+    const loop = await startVoiceLoop({ port: 0, host: '127.0.0.1', anyOrigin: true, responder: createResponder({ env: {} }), tts, log: (e: Record<string, unknown>) => events.push(e) });
+    open.push(() => loop.close());
+    expect(await opened(loop.port, 'https://evil.example')).toBe('open');
+    expect(events.find((e) => e.event === 'ready')).toMatchObject({ originCheck: 'off (--any-origin)' });
   });
 });

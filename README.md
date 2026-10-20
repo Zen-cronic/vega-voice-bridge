@@ -374,7 +374,7 @@ To keep a `clientId` across page reloads, persist **both** `client.clientId` and
 A pairing code is 4 characters from a 31-character alphabet (923,521 codes). Anyone who can see the TV can join, which is the point in a living room and wrong for anything sensitive. What the hub does about the rest:
 
 - **Guessing is throttled,** per client address (30 wrong codes a minute; an IPv6 client counts as its /64) and across the whole hub (100 per 10 minutes, after which pairing pauses for every code, the right one too, so a refusal tells a guesser nothing). Peers already paired, and peers resuming with their token, stay in.
-- **Pages on other sites cannot connect** to the CLI hub: it checks `Origin`, and `BridgeHub` offers the same check as `allowedOrigins`.
+- **Pages on other sites cannot connect** to the CLI hub or the Vega voice loop's hub: they check `Origin`, and `BridgeHub` offers the same check as `allowedOrigins`.
 - **Rooms do not outlive the TV,** errors do not carry exception text, `screen.speech` never carries audio URLs, a `clientId` can be taken over only with its `resumeToken`, and the hub answers only with WebSocket subprotocols it was told it may select.
 - **Serve https/wss beyond your own LAN.** Over plain ws, transcripts are readable on the network.
 
@@ -405,7 +405,7 @@ A pairing code is 4 characters from a 31-character alphabet (923,521 codes). Any
 - **React** (`test/react.test.ts`), with react-test-renderer and a real hub: status transitions, ack-after-render hops, the say queue and its reports, interrupts, callback refs, cleanup, barge-in through `./phone`, and PairingQr's views reproducing and decoding to the matrix.
 - **QR** (`test/qr.test.ts`): decode round trips (see [Pairing QR](#pairing-qr-qr)).
 - **Vega player** (`test/vega.test.ts`), against a scripted stand-in for the W3C media player.
-- **Examples and the CLI** (`test/example.test.ts`, `test/agent.test.ts`, `test/loop.test.ts`, `test/tts.test.ts`, `test/respond.test.ts`): the web TV server and its QR, the agent round trip with a stubbed `respond`, `npm run example`, the hub CLI (its phone page and code entry, `--path`, the proxy rules, the Origin check), the voice loop's text-to-speech commands, `RESPOND_CMD` and the Bedrock command against a stand-in for the AWS CLI, and the loop's fallback line when the agent fails.
+- **Examples and the CLI** (`test/example.test.ts`, `test/agent.test.ts`, `test/loop.test.ts`, `test/tts.test.ts`, `test/respond.test.ts`): the web TV server and its QR, the agent round trip with a stubbed `respond`, `npm run example`, the hub CLI (its phone page and code entry, `--path`, the proxy rules, the Origin check), the voice loop's text-to-speech commands, `RESPOND_CMD` and the Bedrock command against a stand-in for the AWS CLI, the loop's fallback line when the agent fails, and the voice loop's Origin check.
 - **Releases** (`test/release.test.ts`): no workflow publishes to npm, and the version agrees across `package.json`, the lockfile, `CHANGELOG.md` and the Vega example.
 
 ## Development

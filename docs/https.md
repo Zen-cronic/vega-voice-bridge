@@ -40,8 +40,8 @@ A tunnel gives the hub a public `https://` address. You start it yourself; it pu
 
 3. Scan the QR. The phone page loads over https and connects with `wss://` on the same host.
 
-- **Rate limits.** Everything through a tunnel arrives from the tunnel agent on loopback, so one remote address would be shared by every phone. `--trust-proxy` keys the limits on the client address the tunnel appends to `X-Forwarded-For` ([docs/deploy.md](deploy.md)).
-- **Origin check.** The CLI accepts WebSockets from pages on `--public-url` automatically. A join page on another site needs `--origin https://that.site`.
+- **Rate limits.** Everything through a tunnel arrives from the tunnel agent on loopback, so one remote address would be shared by every phone. `--trust-proxy` keys the limits on the client address the tunnel appends to `X-Forwarded-For` ([docs/deploy.md](deploy.md)). The voice loop example has no `--trust-proxy`: through a tunnel, all its phones share one rate key.
+- **Origin check.** The CLI and the voice loop example both accept WebSockets from pages on `--public-url` automatically, as well as from the pages they served themselves and from clients that send no `Origin` (TV apps). A page on another site gets 403. With the CLI, a join page on another site needs `--origin https://that.site`; `--any-origin` turns the check off in both.
 - **Who can join.** Anyone with the URL and the code. Codes are not authentication. Stop the tunnel when you are done, and relaunch the TV app after a recording that shows the QR, so the code that was filmed stops working once its room closes.
 
 ## 3. A local certificate authority (mkcert)

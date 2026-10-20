@@ -8,6 +8,7 @@
 ### Fixed
 - **Hub: one rate key counts for at most a tenth of each hub-wide wrong-code window, as documented.** Its share was a window of its own, which began at its first miss and so did not line up with the hub-wide one: a key's misses on both sides of a hub-wide window's end could count for up to twice its share less one in a single window (19 of the default 100), so about 6 addresses could pause pairing instead of 10. The share is now counted inside the hub-wide window.
 - **`examples/vega-voice-loop`, `RESPOND_CMD`:** a reply whose UTF-8 character arrived split across two writes (a command that streams its answer) reached the TV as two `�` in its place; stdout and stderr are now decoded once, whole. The `maxBytes` cap on stdout counts bytes, as its name says, not UTF-16 units.
+- **`examples/vega-voice-loop`: the hub checks `Origin`, as the CLI does.** It had no check, while `docs/https.md` runs it through a tunnel and described the CLI's: a page on another site, opened on the same Wi-Fi, could open sockets to it, and with a room's code send finals, each one an agent call. Now the pages it served, the `--public-url` page and clients that send no `Origin` (the Vega app) connect; other pages get 403, logged once each as `origin-refused`, and the `ready` line names the policy. `--any-origin` (`anyOrigin`) turns the check off.
 
 ## 0.4.0 (2026-10-20)
 

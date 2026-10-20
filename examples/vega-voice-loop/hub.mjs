@@ -1,15 +1,17 @@
 // The voice loop on one port: the bridge hub, the agent (offline rules, or yours with RESPOND_CMD), local
 // text-to-speech, the phone page, and the loop measured in hub clock (printed, and shown on the TV).
-//   node examples/vega-voice-loop/hub.mjs [--port 8790] [--public-url http://192.168.1.20:8790]
+//   node examples/vega-voice-loop/hub.mjs [--port 8790] [--public-url http://192.168.1.20:8790] [--any-origin]
 //   RESPOND_CMD='node examples/vega-voice-loop/agents/bedrock.mjs' node examples/vega-voice-loop/hub.mjs
 // The Vega app reaches it at 127.0.0.1:<port> on the Virtual Device (after a reverse port forward) or at the
 // LAN address on a Fire TV Stick. Replies are fragmented MP4/AAC clips served from this hub over plain http.
 // The pairing QR opens the phone page on this hub, at this machine's LAN address unless --public-url says otherwise.
+// WebSockets are checked for Origin as the CLI checks them: pages this hub served and the --public-url page, plus
+// clients that send no Origin (the Vega app). A page on another site gets 403; --any-origin turns the check off.
 import { createServer } from 'node:http';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BridgeHub } from 'tv-voice-bridge/hub';
+import { BridgeHub, localOriginPolicy } from 'tv-voice-bridge/hub';
 import { latency } from 'tv-voice-bridge';
 import { lanAddress, servePhonePage } from 'tv-voice-bridge/serve';
 import { createResponder } from './respond.mjs';
@@ -19,9 +21,10 @@ const print = (event) => console.log(JSON.stringify(event));
 
 /**
  * Start the loop. `responder` answers each final (`createResponder()`), `tts` makes the clips (`createTts()`), and
- * `log` gets one JSON-able event per join, loop and failure. Resolves once listening.
+ * `log` gets one JSON-able event per join, loop and failure, and per Origin refused. `anyOrigin` turns the Origin
+ * check off. Resolves once listening.
  */
-export async function startVoiceLoop({ port = 8790, host, publicUrl, responder = createResponder(), tts, log = print } = {}) {
+export async function startVoiceLoop({ port = 8790, host, publicUrl, anyOrigin = false, responder = createResponder(), tts, log = print } = {}) {
   const dir = join(fileURLToPath(new URL('.', import.meta.url)), '.tts');
   const voice = tts ?? createTts({ dir });
   const loops = new Map(); // say id -> what the hub saw, in hub clock
@@ -35,15 +38,25 @@ export async function startVoiceLoop({ port = 8790, host, publicUrl, responder =
     res.end(body);
   });
   let base = publicUrl;
+  // The CLI's policy: the page's Origin is the Host it reached this hub at (an address, localhost or a .local
+  // name), or the --public-url origin. A malformed --public-url throws here, before anything listens.
+  const ownOrigins = publicUrl ? [new URL(publicUrl).origin] : [];
+  const refusedOrigins = new Set();
 
   const hub = new BridgeHub({
     server,
     path: '/ws',
     joinUrl: (code) => `${base}/p/${code}`,
-    // Each join, with the Origin header the peer connected with (none from a native TV app).
+    allowedOrigins: anyOrigin ? undefined : localOriginPolicy(ownOrigins),
+    // Each join, with the Origin header the peer connected with (none from a native TV app), and each refused
+    // Origin once.
     log: (event, data) => {
       if (event === 'join') log({ event: 'join', code: data?.code, role: data?.role, origin: data?.origin ?? null });
       else if (event === 'handler-failed') log({ event: 'handler-failed', error: data?.error });
+      else if (event === 'origin-refused' && refusedOrigins.size < 100 && !refusedOrigins.has(data?.origin)) {
+        refusedOrigins.add(data?.origin);
+        log({ event: 'origin-refused', origin: data?.origin });
+      }
     },
     // The answer goes to the screen as soon as the agent has it; its audio follows as soon as the clip exists, so
     // the text on screen never waits for text-to-speech.
@@ -97,7 +110,8 @@ export async function startVoiceLoop({ port = 8790, host, publicUrl, responder =
   await new Promise((resolve) => server.listen(port, host, resolve));
   const bound = server.address().port;
   base = (publicUrl ?? `http://${lanAddress()}:${bound}`).replace(/\/+$/, '');
-  log({ event: 'ready', port: bound, tts: voice.engine, agent: responder.engine, publicUrl: base });
+  const originCheck = anyOrigin ? 'off (--any-origin)' : `pages this hub served${ownOrigins.length ? `, and ${ownOrigins.join(', ')}` : ''}`;
+  log({ event: 'ready', port: bound, tts: voice.engine, agent: responder.engine, publicUrl: base, originCheck });
   return {
     hub,
     server,
@@ -124,7 +138,7 @@ if (isMain) {
   const arg = (name) => (process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : undefined);
   const port = arg('--port') === undefined ? 8790 : Number(arg('--port'));
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error(`--port must be 0..65535, got ${arg('--port')}`);
-  const loop = await startVoiceLoop({ port, publicUrl: arg('--public-url') });
+  const loop = await startVoiceLoop({ port, publicUrl: arg('--public-url'), anyOrigin: process.argv.includes('--any-origin') });
   // Ctrl-C or a stop: end the renders in flight and remove their work files before exiting.
   for (const [sig, code] of [['SIGINT', 130], ['SIGTERM', 143]]) process.once(sig, () => void loop.close().finally(() => process.exit(code)));
 }

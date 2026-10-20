@@ -32,7 +32,7 @@ What we ran into building a voice loop on Fire TV's Vega OS, and what the bridge
   - **Use:** `vega device start-port-forwarding -d VirtualDevice --port 8790 --forward false`, and connect to `ws://127.0.0.1:8790/ws`.
   - **The bridge:** the client also reassembles a message that a runtime splits across `onmessage` events, and its heartbeat drops a link that goes silent without `onclose` (`test/client.test.ts`).
 - **The reverse forward works on a stick over Wi-Fi too** (`-d <stick IP>:5555`), so the app can keep `127.0.0.1:<port>` and the hub sees the stick as local (Speaking Mirror, 2026-10-20). A Fire TV Stick HD on OS 1.2 was reported to stop answering inbound LAN connections after idle ([forum 29220](https://community.amazondeveloper.com/t/29220)); the bridge's TV dials out to the hub, never the reverse.
-- **The `Origin` the Vega app sends** on its WebSocket upgrade is not documented. The voice-loop hub logs it on every join. **To record on the stick**, before turning on an Origin check in front of a Vega app (the CLI's check always admits clients that send none).
+- **The `Origin` the Vega app sends** on its WebSocket upgrade is not documented. The voice-loop hub logs it on every join, and an `Origin` it refuses as `origin-refused`. Its check, the CLI's, admits a client that sends none, or one whose `Origin` is the address it dialled (`http://127.0.0.1:8790` for `ws://127.0.0.1:8790/ws`); `--any-origin` turns it off. **To record on the stick.**
 
 ## Building and running
 

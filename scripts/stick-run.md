@@ -49,7 +49,7 @@ vega device is-app-running -d $D --appName com.tvvoicebridge.loop.main
 
 The TV shows VOICE LOOP, a QR and a 4-character code, and the hub prints `{"event":"join",...,"role":"screen",...}`. If the TV shows nothing, `vega device launch-app -d $D --appName com.tvvoicebridge.loop.main`. If the reverse forward does not work over Wi-Fi, rebuild with `npm run hub -- <dev machine LAN IP>:8790` (step 1) and skip the forward.
 
-**Check: the `Origin` the Vega app sends.** Copy the `origin` field of the screen's join line into the results (`null` means no `Origin` header). It decides whether an Origin check can stand in front of a Vega app.
+**Check: the `Origin` the Vega app sends.** Copy the `origin` field of the screen's join line into the results (`null` means no `Origin` header). The hub checks `Origin` as the CLI does and admits a client that sends none. If the TV never pairs and the hub prints `{"event":"origin-refused","origin":...}` instead of a join, copy that `origin` into the results and restart the hub with `--any-origin` for the rest of the run.
 
 ## 4. Run A: scripted phone, N=20
 
