@@ -12,6 +12,9 @@ import { BridgeClient, latency } from 'tv-voice-bridge';
 import { BridgeHub } from 'tv-voice-bridge/hub';
 import { createPhoneMic } from 'tv-voice-bridge/phone';
 
+// Node 22+ has a global WebSocket; Node 20 does not, so use the hub's own `ws` there.
+const WebSocketImpl = globalThis.WebSocket ?? (await import('ws')).WebSocket;
+
 const SCRIPT = ['what should I do next', 'log six reps at sixty kilos', 'how long do I rest'];
 const PRETEND_AUDIO_MS = 250; // how long the speakerless TV pretends each reply plays
 
@@ -87,7 +90,7 @@ export async function runLoop({ script = SCRIPT, log = (line) => console.log(lin
   const url = `ws://127.0.0.1:${server.address().port}/ws`;
 
   // TV: renders each intent (acked after the event loop turn that handled it) and "plays" each say line.
-  const tv = new BridgeClient({ url, role: 'screen', reconnect: false });
+  const tv = new BridgeClient({ url, role: 'screen', reconnect: false, WebSocketImpl });
   const shown = [];
   tv.on('intent', (m) => {
     const receivedAt = performance.timeOrigin + performance.now();
@@ -106,7 +109,7 @@ export async function runLoop({ script = SCRIPT, log = (line) => console.log(lin
   const { code } = await tv.connect();
 
   // Phone: a mic with the scripted recognizer and the echo guard on.
-  const phone = new BridgeClient({ url, role: 'mic', code, reconnect: false });
+  const phone = new BridgeClient({ url, role: 'mic', code, reconnect: false, WebSocketImpl });
   await phone.connect();
   await phone.syncClock();
   const mic = createPhoneMic({ client: phone, mode: 'continuous', recognizer: () => new ScriptedRecognizer(), secureContext: true, echoGuard: { tailMs: 150 } });
