@@ -16,6 +16,7 @@ import {
   type PhoneMic,
   type PhoneMicError,
   type PhoneMicOptions,
+  voiceSupport,
 } from '../src/phone.js';
 import { ScriptedRecognizer } from './helpers/recognizer.js';
 
@@ -515,5 +516,62 @@ describe('EchoGuard (clocked)', () => {
     expect(isEcho('my last set', 'Rest two minutes, then do your last set')).toBe(false);
     expect(echoOverlap('wait stop', 'Here is a long answer')).toBe(0);
     expect(echoOverlap('', 'x')).toBe(0);
+  });
+});
+
+describe('voiceSupport: whether this page can listen, and if not, why and what to do', () => {
+  const UA = {
+    androidChrome: 'Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Mobile Safari/537.36',
+    iphoneSafari: 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1',
+    iphoneChrome: 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/147.0.0.0 Mobile/15E148 Safari/604.1',
+    firefox: 'Mozilla/5.0 (Android 15; Mobile; rv:140.0) Gecko/140.0 Firefox/140.0',
+  };
+  const page = { protocol: 'http:', host: '192.168.1.20:8790', pathname: '/p/K7QF' };
+
+  it('a secure page with a recognizer can listen', () => {
+    expect(voiceSupport({ secureContext: true, recognizer: true, userAgent: UA.androidChrome })).toEqual({ ok: true, fixes: [], message: 'Voice is on: hold the button and talk.' });
+  });
+
+  it('plain http on the LAN: says the browser turned the microphone off, and lists the ways to https', () => {
+    const v = voiceSupport({ secureContext: false, recognizer: true, userAgent: UA.androidChrome, location: page });
+    expect(v.ok).toBe(false);
+    expect(v.reason).toBe('insecure-context');
+    expect(v.message).toMatch(/plain http/);
+    expect(v.message).toMatch(/type/i);
+    expect(v.fixes[0]).toMatch(/https link/);
+    // Android Chrome: the per-device developer flag, with this page's own origin filled in.
+    expect(v.fixes.join('\n')).toContain('chrome://flags/#unsafely-treat-insecure-origin-as-secure');
+    expect(v.fixes.join('\n')).toContain('http://192.168.1.20:8790');
+    expect(v.fixes.join('\n')).toContain('http://localhost:8790/p/K7QF');
+  });
+
+  it('iPhone Safari over http has no recognizer at all (Safari 26 hides it): still the https reason, never "use Safari"', () => {
+    const v = voiceSupport({ secureContext: false, recognizer: false, userAgent: UA.iphoneSafari, location: page });
+    expect(v.reason).toBe('insecure-context');
+    expect(v.fixes.join('\n')).not.toContain('chrome://flags');
+    expect(v.message).not.toMatch(/open this page in Safari/);
+  });
+
+  it('a browser with no recognizer gets told which one to use', () => {
+    expect(voiceSupport({ secureContext: true, recognizer: false, userAgent: UA.iphoneChrome })).toMatchObject({ ok: false, reason: 'no-support', message: expect.stringMatching(/open this page in Safari/) });
+    expect(voiceSupport({ secureContext: true, recognizer: false, userAgent: UA.firefox })).toMatchObject({ ok: false, reason: 'no-support', message: expect.stringMatching(/Firefox has no speech recognition/) });
+    expect(voiceSupport({ secureContext: true, recognizer: false, userAgent: 'SomethingElse/1.0' }).message).toMatch(/Chrome .* or Safari/);
+  });
+
+  it('Brave has a recognizer that returns nothing: voice is allowed, with a caution', () => {
+    const v = voiceSupport({ secureContext: true, recognizer: true, userAgent: UA.androidChrome, brave: true });
+    expect(v.ok).toBe(true);
+    expect(v.caution).toMatch(/Brave/);
+  });
+
+  it('reads the page by default, and never throws without a browser', () => {
+    vi.stubGlobal('isSecureContext', false);
+    vi.stubGlobal('location', page);
+    try {
+      expect(voiceSupport()).toMatchObject({ ok: false, reason: 'insecure-context' });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(() => voiceSupport()).not.toThrow();
   });
 });

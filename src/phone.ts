@@ -57,7 +57,78 @@ export function connectPhone(opts: ConnectPhoneOptions = {}): BridgeClient {
   return client;
 }
 
-// Web Speech, reduced to what the mic uses (so tests and other recognizers can stand in).
+export interface VoiceSupport {
+  /** Speech recognition can start on this page. */
+  ok: boolean;
+  /** Why it cannot: an http page that is not localhost, or a browser with no recognizer. */
+  reason?: 'insecure-context' | 'no-support';
+  /** One plain sentence for the page. */
+  message: string;
+  /** What to do about it, most useful first (empty when `ok`). */
+  fixes: string[];
+  /** Voice may start but is known not to work well here (Brave returns no results). */
+  caution?: string;
+}
+
+export interface VoiceSupportEnv {
+  /** Default: `globalThis.isSecureContext`. */
+  secureContext?: boolean;
+  /** A speech recognizer exists (default: `webSpeechRecognizer() !== null`). */
+  recognizer?: boolean;
+  /** Default: `navigator.userAgent`. */
+  userAgent?: string;
+  /** Brave exposes `navigator.brave` (default: read from `navigator`). */
+  brave?: boolean;
+  /** The page's address, to fill in the https fixes (default: `location`). */
+  location?: LocationLike;
+}
+
+/**
+ * Can this phone page listen, and if not, why and what to do? Browsers give speech recognition only to secure
+ * pages (https, or `localhost`): Safari 26 and later has no recognizer at all on a plain-http page, and Chrome
+ * refuses to start one. Some browsers have none anywhere (Firefox, other browsers on iPhone). Never throws.
+ */
+export function voiceSupport(env: VoiceSupportEnv = {}): VoiceSupport {
+  const g = globalThis as { isSecureContext?: boolean; navigator?: { userAgent?: string; brave?: unknown } };
+  const secure = env.secureContext ?? g.isSecureContext;
+  const recognizer = env.recognizer ?? webSpeechRecognizer() !== null;
+  const ua = env.userAgent ?? g.navigator?.userAgent ?? '';
+  const brave = env.brave ?? g.navigator?.brave !== undefined;
+  const loc = env.location ?? currentLocation();
+  const iphone = /iPhone|iPad|iPod/.test(ua);
+  const android = /Android/.test(ua);
+  const chromeOnAndroid = android && /Chrome\//.test(ua) && !/SamsungBrowser|Firefox\//.test(ua);
+  const safariOnIphone = iphone && /Version\/[\d.]+.*Safari\//.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(ua);
+
+  if (secure === false) {
+    const origin = loc ? `${loc.protocol}//${loc.host}` : 'http://<hub address>';
+    const port = loc && /:(\d+)$/.exec(loc.host)?.[1];
+    const fixes = ['Open the https link for this hub, if it has one (a tunnel or an https proxy in front of it).'];
+    if (chromeOnAndroid || (!iphone && !android))
+      fixes.push(`Chrome, for development on your own device: open chrome://flags/#unsafely-treat-insecure-origin-as-secure, add ${origin}, enable it and relaunch.`);
+    fixes.push(`To try voice without a phone: on the computer running the hub, open http://localhost${port ? `:${port}` : ''}${loc?.pathname ?? '/p/<code>'} (localhost counts as secure).`);
+    return {
+      ok: false,
+      reason: 'insecure-context',
+      message: 'Voice is off: this page is plain http, and browsers allow speech recognition only on https (or localhost). Type below instead.',
+      fixes,
+    };
+  }
+  if (!recognizer) {
+    const message =
+      iphone && !safariOnIphone
+        ? 'This browser has no speech recognition on iPhone: open this page in Safari, or type below.'
+        : /Firefox\//.test(ua)
+          ? 'Firefox has no speech recognition: open this page in Chrome or Safari, or type below.'
+          : 'This browser has no speech recognition: use Chrome (Android, desktop) or Safari (iPhone, Mac), or type below.';
+    return { ok: false, reason: 'no-support', message, fixes: safariOnIphone ? ['Turn on Siri (Settings, Siri): Safari dictation needs it.'] : [] };
+  }
+  const v: VoiceSupport = { ok: true, fixes: [], message: 'Voice is on: hold the button and talk.' };
+  if (brave) v.caution = 'Brave turns speech recognition results off, so the phone may hear nothing: use Chrome or Safari, or type.';
+  return v;
+}
+
+// Web Speech, reduced to what the mic uses (so tests and other recognizers can stand in).// Web Speech, reduced to what the mic uses (so tests and other recognizers can stand in).
 export interface RecognitionAlternativeLike {
   transcript: string;
 }
