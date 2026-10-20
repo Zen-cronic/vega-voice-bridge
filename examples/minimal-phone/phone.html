@@ -11,79 +11,139 @@
       button { font: inherit; font-size: 22px; padding: 18px; width: 100%; border: 0; border-radius: 14px; background: #ffcf33; color: #111; margin: 12px 0; touch-action: none; user-select: none; }
       button.secondary { background: #283140; color: inherit; font-size: 18px; padding: 12px; }
       button[aria-pressed='true'] { background: #ff8a33; }
+      button:disabled { background: #283140; color: #6b7684; cursor: not-allowed; }
       input[type='text'] { font: inherit; width: 100%; box-sizing: border-box; padding: 12px; border-radius: 10px; border: 2px solid #283140; background: #12161d; color: inherit; }
+      input:disabled + span { color: #6b7684; }
       label { display: block; margin: 8px 0; }
       #status, #lat, #mic-state { color: #9aa4b2; }
       #tv { color: #ffcf33; min-height: 1.4em; }
       #heard { min-height: 1.4em; font-style: italic; }
+      #why { background: #161c27; border-left: 4px solid #ffcf33; border-radius: 8px; padding: 12px 14px; margin: 12px 0; font-size: 16px; }
+      #why p { margin: 0; }
+      #why ol { margin: 8px 0 0; padding-left: 20px; }
+      #why li { margin: 6px 0; overflow-wrap: anywhere; color: #c8d0da; }
+      #why a { color: #ffcf33; display: inline-block; margin-top: 8px; }
+      #join-form input { font-size: 32px; letter-spacing: 8px; text-align: center; text-transform: uppercase; }
+      #join-error { color: #ff8a8a; min-height: 1.4em; }
+      [hidden] { display: none !important; }
     </style>
   </head>
   <body>
-    <div id="status">connecting…</div>
-    <div id="tv"></div>
-    <button id="mic" aria-pressed="false">Hold to talk</button>
-    <label><input type="checkbox" id="free" /> Hands-free (keeps listening; ignores the TV while it talks)</label>
-    <button id="stop" class="secondary">Stop the TV</button>
-    <form id="f"><input id="t" type="text" placeholder="…or type what you would say" /></form>
-    <div id="heard"></div>
-    <div id="mic-state"></div>
-    <div id="lat"></div>
+    <!-- Opened without a code (/p/): type the one the TV shows. -->
+    <form id="join-form" hidden>
+      <label for="code">Type the code on the TV</label>
+      <input id="code" type="text" maxlength="9" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="K7QF" />
+      <button>Join</button>
+      <div id="join-error"></div>
+    </form>
+
+    <main id="app" hidden>
+      <div id="status">connecting…</div>
+      <div id="tv"></div>
+      <section id="why" role="status" hidden>
+        <p id="why-message"></p>
+        <ol id="why-fixes"></ol>
+        <a href="https://github.com/Zen-cronic/tv-voice-bridge/blob/main/docs/https.md" target="_blank" rel="noopener">How to turn voice on</a>
+      </section>
+      <button id="mic" aria-pressed="false">Hold to talk</button>
+      <label><input type="checkbox" id="free" /> <span>Hands-free (keeps listening; ignores the TV while it talks)</span></label>
+      <button id="stop" class="secondary">Stop the TV</button>
+      <form id="f"><input id="t" type="text" placeholder="…or type what you would say" /></form>
+      <div id="heard"></div>
+      <div id="mic-state"></div>
+      <div id="lat"></div>
+    </main>
     <script type="module">
       import { latency, localNow } from '/lib/index.js';
-      import { connectPhone, createPhoneMic } from '/lib/phone.js';
+      import { codeFromPath, connectPhone, createPhoneMic, voiceSupport } from '/lib/phone.js';
       const $ = (id) => document.getElementById(id);
 
-      // The hub URL and the pairing code come from this page's address (/p/<code>), the path from the meta tag.
-      const path = document.querySelector('meta[name="tv-voice-bridge-path"]')?.content || '/ws';
-      const phone = connectPhone({ path, onError: (e) => ($('status').textContent = e.message) });
-      phone.on('ack', (a) => ($('lat').textContent = `speech end → TV render: ${latency(a.hops).span('speech.end', 'screen.render')} ms`));
-      phone.on('open', () => ($('status').textContent = `paired with ${phone.code}`));
-      phone.on('reconnecting', () => ($('status').textContent = 'reconnecting…'));
-      phone.on('repair', () => ($('status').textContent = 'The TV is gone. Scan the code on the TV again.'));
-      $('f').onsubmit = (e) => {
-        e.preventDefault();
-        // null: not sent (reconnecting), so keep the text for another try
-        if (phone.sendFinal($('t').value, { speechEndAt: localNow() }) === null) $('status').textContent = 'not sent: reconnecting…';
-        else $('t').value = '';
-      };
+      // The pairing code comes from this page's address (/p/<code>). Without one, ask for it.
+      if (!codeFromPath(location.pathname)) {
+        $('join-form').hidden = false;
+        $('code').focus();
+        $('join-form').onsubmit = (e) => {
+          e.preventDefault();
+          const code = codeFromPath(`/${$('code').value}`);
+          if (code) location.assign(`/p/${code}`);
+          else $('join-error').textContent = 'A code is 4 letters or digits, as the TV shows it.';
+        };
+      } else start();
 
-      // The echo guard is on by default: while the TV speaks, what this mic hears is not sent.
-      // bargeIn lets you talk over the TV: it stops, and what you said goes through.
-      let mic = null;
-      function makeMic(mode) {
-        mic?.dispose();
-        mic = createPhoneMic({ client: phone, mode, echoGuard: { bargeIn: true } });
-        mic.on('state', (s) => ($('mic-state').textContent = s === 'guarded' ? 'The TV is talking; not listening to it.' : s));
-        mic.on('guard', (on) => ($('tv').textContent = on ? 'TV is speaking…' : ''));
-        mic.on('partial', (p) => ($('heard').textContent = p.text));
-        mic.on('final', (f) => ($('heard').textContent = `“${f.text}”`));
-        mic.on('bargeIn', () => ($('tv').textContent = 'Stopped the TV.'));
-        mic.on('error', (e) => ($('mic-state').textContent = e.message));
-        if (!mic.supported) $('mic').disabled = true;
-        return mic;
+      /** Say why voice is off (or shaky) here, and what to do about it. Plain text only. */
+      function explain(message, fixes = []) {
+        $('why-message').textContent = message;
+        $('why-fixes').replaceChildren(...fixes.map((f) => Object.assign(document.createElement('li'), { textContent: f })));
+        $('why').hidden = false;
       }
-      makeMic('push-to-talk');
 
-      const press = (on) => $('mic').setAttribute('aria-pressed', String(on));
-      $('mic').onpointerdown = (e) => {
-        e.preventDefault();
-        if ($('free').checked) return;
-        press(true);
-        mic.start();
-      };
-      $('mic').onpointerup = $('mic').onpointercancel = () => {
-        if ($('free').checked) return;
-        press(false);
-        mic.stop();
-      };
-      $('free').onchange = () => {
-        const free = $('free').checked;
-        makeMic(free ? 'continuous' : 'push-to-talk');
-        $('mic').textContent = free ? 'Listening (hands-free)' : 'Hold to talk';
-        press(free);
-        if (free) mic.start();
-      };
-      $('stop').onclick = () => mic.interrupt();
+      function start() {
+        $('app').hidden = false;
+        // The hub URL comes from this page's address, the path from the meta tag.
+        const path = document.querySelector('meta[name="tv-voice-bridge-path"]')?.content || '/ws';
+        const phone = connectPhone({ path, onError: (e) => ($('status').textContent = e.message) });
+        phone.on('ack', (a) => ($('lat').textContent = `speech end → TV render: ${latency(a.hops).span('speech.end', 'screen.render')} ms`));
+        phone.on('open', () => ($('status').textContent = `paired with ${phone.code}`));
+        phone.on('reconnecting', () => ($('status').textContent = 'reconnecting…'));
+        phone.on('repair', () => ($('status').textContent = 'The TV is gone. Scan the code on the TV again.'));
+        $('f').onsubmit = (e) => {
+          e.preventDefault();
+          // null: not sent (reconnecting), so keep the text for another try
+          if (phone.sendFinal($('t').value, { speechEndAt: localNow() }) === null) $('status').textContent = 'not sent: reconnecting…';
+          else $('t').value = '';
+        };
+
+        // Over plain http (or in a browser without a recognizer) the mic cannot work: say so, and offer typing.
+        const voice = voiceSupport();
+        if (!voice.ok) {
+          explain(voice.message, voice.fixes);
+          $('mic').disabled = true;
+          $('free').disabled = true;
+          $('mic').textContent = 'Voice is off on this page';
+          $('t').placeholder = 'Type what you would say';
+        } else if (voice.caution) explain(voice.caution);
+
+        // The echo guard is on by default: while the TV speaks, what this mic hears is not sent.
+        // bargeIn lets you talk over the TV: it stops, and what you said goes through.
+        let mic = null;
+        function makeMic(mode) {
+          mic?.dispose();
+          mic = createPhoneMic({ client: phone, mode, echoGuard: { bargeIn: true } });
+          mic.on('state', (s) => ($('mic-state').textContent = s === 'guarded' ? 'The TV is talking; not listening to it.' : s));
+          mic.on('guard', (on) => ($('tv').textContent = on ? 'TV is speaking…' : ''));
+          mic.on('partial', (p) => ($('heard').textContent = p.text));
+          mic.on('final', (f) => ($('heard').textContent = `“${f.text}”`));
+          mic.on('bargeIn', () => ($('tv').textContent = 'Stopped the TV.'));
+          mic.on('error', (e) => {
+            $('mic-state').textContent = e.message;
+            if (e.fatal) explain(e.message);
+          });
+          if (!mic.supported) $('mic').disabled = true;
+          return mic;
+        }
+        makeMic('push-to-talk');
+
+        const press = (on) => $('mic').setAttribute('aria-pressed', String(on));
+        $('mic').onpointerdown = (e) => {
+          e.preventDefault();
+          if ($('free').checked || $('mic').disabled) return;
+          press(true);
+          mic.start();
+        };
+        $('mic').onpointerup = $('mic').onpointercancel = () => {
+          if ($('free').checked || $('mic').disabled) return;
+          press(false);
+          mic.stop();
+        };
+        $('free').onchange = () => {
+          const free = $('free').checked;
+          makeMic(free ? 'continuous' : 'push-to-talk');
+          $('mic').textContent = free ? 'Listening (hands-free)' : 'Hold to talk';
+          press(free);
+          if (free) mic.start();
+        };
+        $('stop').onclick = () => mic.interrupt();
+      }
     </script>
   </body>
 </html>

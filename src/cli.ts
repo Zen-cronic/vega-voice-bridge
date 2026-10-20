@@ -37,8 +37,9 @@ const HELP = `Usage: tv-voice-bridge-hub [options]
   --quiet             Do not log joins and leaves
   -h, --help          Show this help
 
-GET /p/<code> serves a phone page (hold to talk, hands-free, or type) and /lib/ the modules it imports.
-Browsers allow the microphone only on https or localhost: over plain http on the LAN the page offers typing.
+GET /p/<code> serves a phone page (hold to talk, hands-free, or type) and /lib/ the modules it imports;
+/ and /p/ ask for the code. Browsers allow speech recognition only on https or localhost: over plain http
+on the LAN the page says so, lists the ways to turn voice on, and offers typing.
 GET /healthz answers {"ok":true,"rooms":<n>}.`;
 
 export interface HubCliOptions {
@@ -124,7 +125,15 @@ export async function startHubCli(o: HubCliOptions, log: (line: string) => void 
       res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: true, rooms: hub.rooms.size }));
       return;
     }
-    if (o.phonePage !== false && servePhonePage(req, res, { path: o.path })) return;
+    if (o.phonePage !== false) {
+      // Someone who typed the hub's address: the phone page asks for the TV's code.
+      const pathname = (req.url ?? '/').split('?')[0];
+      if (pathname === '/' || pathname === '/p') {
+        res.writeHead(302, { location: '/p/' }).end();
+        return;
+      }
+      if (servePhonePage(req, res, { path: o.path })) return;
+    }
     res.writeHead(404, { 'content-type': 'text/plain' }).end('tv-voice-bridge hub: connect a WebSocket to ' + o.path + '\n');
   });
   await new Promise<void>((resolve, reject) => {

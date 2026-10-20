@@ -311,6 +311,32 @@ describe('tv-voice-bridge-hub (CLI)', () => {
     }
   });
 
+  it('the phone page explains itself: why voice is off over http, and a code entry for /, /p and /p/', async () => {
+    const app = await startHubCli({ port: 0, host: '127.0.0.1', path: '/ws', echo: false, trustProxy: false, quiet: true }, () => undefined);
+    try {
+      const base = `http://127.0.0.1:${app.port}`;
+      for (const p of ['/', '/p', '/?x=1']) {
+        const r = await fetch(`${base}${p}`, { redirect: 'manual' });
+        expect(r.status, p).toBe(302);
+        expect(r.headers.get('location')).toBe('/p/');
+      }
+      const html = await (await fetch(`${base}/p/`)).text();
+      // The code entry, and the panel that voiceSupport() fills when voice cannot work here.
+      expect(html).toContain('id="join-form"');
+      expect(html).toContain('codeFromPath(location.pathname)');
+      expect(html).toContain('id="why"');
+      expect(html).toMatch(/import \{[^}]*voiceSupport[^}]*\} from '\/lib\/phone\.js'/);
+      expect(html).toContain('const voice = voiceSupport();');
+      expect(html).toContain("$('mic').disabled = true;");
+      expect(html).toContain('docs/https.md');
+      // The page imports only what ./phone exports.
+      const phone = await import('../src/phone.js');
+      for (const name of /import \{([^}]*)\} from '\/lib\/phone\.js'/.exec(html)![1]!.split(',').map((x) => x.trim())) expect(typeof (phone as Record<string, unknown>)[name], name).toBe('function');
+    } finally {
+      await app.close();
+    }
+  });
+
   it('a --join-url template replaces the whole URL', async () => {
     const app = await startHubCli({ port: 0, host: '127.0.0.1', path: '/ws', joinUrl: 'https://app.example/join/{code}?tv=1', echo: false, trustProxy: false, quiet: true }, () => undefined);
     try {
