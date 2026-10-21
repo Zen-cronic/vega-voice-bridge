@@ -199,7 +199,7 @@ const tv = useVoiceBridge({
 - **Say lines play one at a time** through your `player`. Lines come from the hub, or from the TV's own `say(text)`. `high` priority interrupts the current line, and so does a phone's barge-in (`interruptible`, default true). Every state is reported on `screen.say.status`, with the line's text, which is what keeps the phone's echo guard in step. With no player, lines are captions only and are reported as `no-audio`.
 - **Callbacks and the player are read from the latest render,** so inline functions are fine. The connection is rebuilt only when `url`, `code`, `name`, `clientId`, `resumeToken`, `sayTopic` or `enabled` change. Unmounting closes it.
 - **`<PairingQr value size? ecc? quietZone? dark? light? testID? />`** draws one `View` per horizontal run of dark modules over a light square. The square includes the 4-module quiet zone and uses whole-number cells. Its default `testID` is `pairing-qr`.
-- **Where it has run.** The Vega voice-loop example runs on the hook on the VVD (measured below). Speaking Mirror, which uses `BridgeClient` and `PairingQr`, ran on a Fire TV Stick on 2026-10-20; that run was not measured. The tests use react-test-renderer and React 18 with a host-component mock of `react-native`.
+- **Where it has run.** The Vega voice-loop example runs on the hook on the VVD (measured below). Spee, which uses `BridgeClient` and `PairingQr`, ran on a Fire TV Stick on 2026-10-20; that run was not measured. The tests use react-test-renderer and React 18 with a host-component mock of `react-native`.
 
 ## The TV speaks back on Vega (`./vega`)
 
@@ -426,7 +426,7 @@ npm pack --dry-run       # dist/, src/, the phone page, README.md, PROTOCOL.md, 
 
 ## Used by
 
-- **Speaking Mirror**, a speech coach whose Fire TV mirror runs on the bridge.
+- **Spee**, a speech coach whose Fire TV app runs on the bridge.
 - The bridge was first extracted from **Rack Board**, a Fire TV training board where the phone logged sets by voice and the TV coached out loud.
 
 ## Contributing
