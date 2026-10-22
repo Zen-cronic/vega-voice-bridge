@@ -1,0 +1,39 @@
+{
+  "label": "Voice loop with a model in the loop: Amazon Bedrock, one line, headless (no device)",
+  "date": "2026-10-22",
+  "time": "2026-10-22 14:37 UTC (2026-10-22 10:37 EDT)",
+  "n": 1,
+  "model": "us.amazon.nova-lite-v1:0",
+  "region": "us-east-1",
+  "agent": "RESPOND_CMD='node examples/vega-voice-loop/agents/bedrock.mjs' (one Bedrock Converse call through the AWS CLI 2.35, BEDROCK_MAX_TOKENS 160, no history)",
+  "tts": "espeak, encoded to fragmented MP4/AAC by ffmpeg (examples/vega-voice-loop/tts.mjs)",
+  "setup": "examples/vega-voice-loop/hub.mjs on one Linux laptop, Node 24. The TV is a Node BridgeClient joined as the screen: it acks each intent as soon as it arrives (no frame to wait for), and on screen.say fetches the clip over http from the hub, then reports playing and ended. The phone is a Node BridgeClient joined as the mic that sends one transcript.final, stamping speech.end at send time. No device, no speaker, no phone recognizer.",
+  "said": "What should I practise before my stand-up?",
+  "reply": "\"Practice your jokes aloud.\"",
+  "replyClip": { "contentType": "audio/mp4", "bytes": 17494, "durationS": 2.31 },
+  "legsMs": {
+    "finalToReplyOnTv": 1855,
+    "finalToSayOnTv": 1974,
+    "sayOnTvToAudioReady": 18,
+    "finalToAudioReady": 1992
+  },
+  "hubLoopLine": { "shownMs": 1855, "agentMs": 1851, "ttsMs": 122, "sayToPlayingMs": 19, "heardMs": 1993, "replyMs": 0, "state": "ended" },
+  "meaning": {
+    "finalToReplyOnTv": "the phone sends transcript.final -> the TV client receives the intent carrying the reply text (same process, one clock)",
+    "finalToSayOnTv": "the phone sends transcript.final -> the TV client receives screen.say with the clip's audioUrl",
+    "sayOnTvToAudioReady": "screen.say received -> the whole clip fetched from the hub by the TV client",
+    "finalToAudioReady": "the phone sends transcript.final -> reply audio ready on the TV client (the end-to-end figure)",
+    "shownMs": "hub clock: speech.end -> screen.render (the TV acks on arrival, so this is reply text on the TV)",
+    "agentMs": "hub clock: transcript in -> agent reply out. The whole RESPOND_CMD: a Node process, the AWS CLI's start-up and the Bedrock Converse call. The model's own share is not separated",
+    "ttsMs": "hub clock: agent reply -> screen.say sent (espeak plus ffmpeg, a fresh clip)",
+    "sayToPlayingMs": "hub clock: screen.say sent -> the TV client reports playing, which it does once the clip is fetched",
+    "heardMs": "hub clock: speech.end -> playing. With no speaker this is reply audio ready on the TV client, not audible",
+    "replyMs": "0: the TV client reports ended right after playing, since nothing plays"
+  },
+  "notIncluded": [
+    "a real phone's recognizer tail (speech.end is stamped when the final is sent)",
+    "Vega's media player start-up and decode (the VVD run measured screen.say -> playing at 154 / 182 ms p50 / p95)",
+    "network legs to a device (everything is on 127.0.0.1)",
+    "cloud text-to-speech (espeak is local)"
+  ]
+}
