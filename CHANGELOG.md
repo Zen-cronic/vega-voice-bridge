@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.4.1 (2026-10-21)
+
+The wire protocol is unchanged (v1, revision 3), and 0.4.0 clients and hubs work with 0.4.1 ones both ways. One hub behaviour changed for existing users: one rate key's wrong codes now count inside the hub-wide window (the first item under "Fixed"), so it takes about 10 addresses to pause pairing, as documented, not about 6.
 
 ### Added
 - **A portable conformance kit.** The wire vectors are plain JSON in `test/vectors/wire.json` (messages to accept unchanged, frames to refuse with the field named, frames to normalize), read by `test/conformance.test.ts` and usable from any language. `test/hub-conformance.test.ts` is the hub's side over raw WebSockets; `npm test` runs it against this repo's CLI hub, `TVB_HUB_URL=ws://host:port/ws npm run conformance` against any running hub with an echo responder, and CI against a separate hub process.
@@ -11,6 +13,12 @@
 - **`examples/vega-voice-loop`: the hub checks `Origin`, as the CLI does.** It had no check, while `docs/https.md` runs it through a tunnel and described the CLI's: a page on another site, opened on the same Wi-Fi, could open sockets to it, and with a room's code send finals, each one an agent call. Now the pages it served, the `--public-url` page and clients that send no `Origin` (the Vega app) connect; other pages get 403, logged once each as `origin-refused`, and the `ready` line names the policy. `--any-origin` (`anyOrigin`) turns the check off.
 - **`examples/vega-voice-loop/vega`: `npm run hub` no longer writes a tracked file.** It wrote the hub's address into `src/hub.json`, which git tracks, and the stick run's fallback puts the dev machine's LAN address there with no step to undo it, so a later commit of everything would have published that address. It now writes `src/hub.local.json`, which git ignores and the app reads before the tracked `src/hub.json` (still `127.0.0.1:8790`). The stick run's guide ends by removing it, and git also ignores the run's `bench-*.json` and `clip.mp4` in the repo root.
 - **`./phone`:** one copy of a comment that the `voiceSupport()` change left twice on one line, in `src/` and in `dist/`.
+
+### Docs
+- **The README opens with the voice loop screenshot from the Vega Virtual Device,** and a line saying where its numbers come from. The Fire TV Stick column says "not measured yet", and `test/docs.test.ts` fails if a number appears there before a measured run (`scripts/stick-run.md`).
+- **The CLI hub's command:** `npm run hub -- <options>` in a clone, and `npx --no-install tv-voice-bridge-hub` in an app that installed the package. The docs gave npx the bin's name alone, which asks npm for a package with that name. There is none, and anyone could register it.
+- **Node 20:** the client needs `WebSocketImpl` from `ws` there, since Node 20 has no global `WebSocket`.
+- **"Used by"** says how Spee, the speaking coach that uses the bridge, pairs through it (with 0.3.5), and that neither Spee's repository nor Rack Board is public.
 
 ## 0.4.0 (2026-10-20)
 

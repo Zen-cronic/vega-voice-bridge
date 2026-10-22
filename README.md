@@ -29,7 +29,7 @@ The phone's own recognizer turns speech into text. Your `onFinal` handler, wheth
 | `…/qr` | A dependency-free QR Code encoder for the pairing screen |
 | [PROTOCOL.md](PROTOCOL.md) | The wire protocol (v1), for a second implementation on another platform |
 
-Version **0.4.0**, protocol v1 revision 3 ([CHANGELOG.md](CHANGELOG.md)). Not on npm: [install](#install) it from git or a release tarball.
+Version **0.4.1**, protocol v1 revision 3 ([CHANGELOG.md](CHANGELOG.md)). Not on npm: [install](#install) it from git or a release tarball.
 
 ## The whole loop in one command
 
@@ -114,14 +114,14 @@ What the hub and your `onFinal` do with the text is your app's privacy surface. 
 
 ```bash
 npm install github:Zen-cronic/tv-voice-bridge          # builds dist/ on install (the prepare script)
-npm install github:Zen-cronic/tv-voice-bridge#v0.4.0   # a release tag
+npm install github:Zen-cronic/tv-voice-bridge#v0.4.1   # a release tag
 ```
 
 Each [GitHub release](https://github.com/Zen-cronic/tv-voice-bridge/releases) also carries the packed tarball. Or pack it yourself:
 
 ```bash
 npm pack --pack-destination ../my-app/vendor     # in this repo; builds first
-cd ../my-app && npm install ./vendor/tv-voice-bridge-0.4.0.tgz
+cd ../my-app && npm install ./vendor/tv-voice-bridge-0.4.1.tgz
 ```
 
 Prefer a tarball for Vega builds: Metro may not follow the symlink that `npm link` or a git checkout makes. The hub needs `ws` (an optional peer dependency). The client needs nothing in a browser, in React Native or on Node 22 and later; Node 20 has no global `WebSocket`, so there pass the one from `ws` as `WebSocketImpl`. `./react` needs `react` 18 or later and a `react-native` your bundler resolves (React Native for Vega, or react-native-web); both are optional peer dependencies that only `./react` imports. `./vega` needs `@amazon-devices/react-native-w3cmedia` (optional too).

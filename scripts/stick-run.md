@@ -19,9 +19,9 @@ Produces `stick-scripted.log`, `stick-phone.log`, `stick-checks.log`, `bench-scr
 ## 1. Build the TV app with this version
 
 ```bash
-npm ci && npm pack                                   # tv-voice-bridge-0.4.0.tgz at the repo root
+npm ci && npm pack                                   # tv-voice-bridge-0.4.1.tgz at the repo root
 cd examples/vega-voice-loop/vega
-npm install && npm install ../../../tv-voice-bridge-0.4.0.tgz   # refreshes a stale bridge in node_modules
+npm install && npm install ../../../tv-voice-bridge-0.4.1.tgz   # refreshes a stale bridge in node_modules
 npm run hub -- 127.0.0.1:8790                        # the app dials the hub through the reverse forward (src/hub.local.json)
 npm run build                                        # build/armv7-release/tv-voice-bridge-voiceloop_armv7.vpkg
 cd ../../..

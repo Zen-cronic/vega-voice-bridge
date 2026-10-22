@@ -1,6 +1,6 @@
 {
   "name": "tv-voice-bridge",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": true,
   "description": "Two-way voice for Fire TV (Vega) apps and AI agents: the phone listens, your agent answers, the TV shows it and says it. Echo guard, barge-in, every hop timed. No phone app.",
   "license": "MIT",
