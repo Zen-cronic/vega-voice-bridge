@@ -2,7 +2,7 @@
 
 What we ran into building a voice loop on Fire TV's Vega OS, and what the bridge does about each. These are platform facts and workarounds, found on the Vega Virtual Device (VVD, SDK 0.24) and a Fire TV Stick (armv7, Vega OS 2.0) between 2026-10-14 and 2026-10-20. Each note says how the bridge's current code handles it and how that was checked. Sources are Amazon's documentation and developer forum, linked inline.
 
-> **Real-stick measurements (R1) are not in yet.** The open questions below that need the stick, such as plain-http audio after the September 2026 OS update and what happens when Alexa backgrounds the app, are marked **To test on the stick**.
+> **The Fire TV Stick is not measured yet.** The open questions below that need the stick, such as plain-http audio after the September 2026 OS update and what happens when Alexa backgrounds the app, are marked **To test on the stick**.
 
 ## Speech in and out
 

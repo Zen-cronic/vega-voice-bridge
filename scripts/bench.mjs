@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // The numbers of a measured run, from the voice-loop hub's log: one {"event":"loop",...} JSON line per utterance
 // (examples/vega-voice-loop/hub.mjs prints them). Per leg: n, min, p50, p95, max in milliseconds, hub clock.
-//   node scripts/bench.mjs r1-scripted.log --label "Fire TV Stick, scripted phone" > bench-scripted.json
-//   node scripts/bench.mjs r1-scripted.log --markdown
+//   node scripts/bench.mjs stick-scripted.log --label "Fire TV Stick, scripted phone" > bench-scripted.json
+//   node scripts/bench.mjs stick-scripted.log --markdown
 // Percentiles are nearest-rank (p95 of 20 values is the 19th smallest). A leg that was not measured for a line
 // (no audio played, say) is left out of that leg's numbers, and the line's state is counted.
 import { readFileSync } from 'node:fs';

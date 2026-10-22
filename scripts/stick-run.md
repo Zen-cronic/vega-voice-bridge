@@ -1,10 +1,10 @@
-# The measured Fire TV Stick run (R1)
+# The measured Fire TV Stick run
 
-The run that turns the README's "pending" column into measured numbers: the Vega voice loop on a real Fire TV Stick, first with the scripted phone (N=20), then with a real phone speaking (N≥10), plus four checks: barge-in, the plain-http audio question, the Alexa button, and the `Origin` the Vega app sends. It ends with a 60–90 s clip and a 6–10 s GIF.
+The run that fills the README's "not measured yet" column with measured numbers: the Vega voice loop on a real Fire TV Stick, first with the scripted phone (N=20), then with a real phone speaking (N≥10), plus four checks: barge-in, the plain-http audio question, the Alexa button, and the `Origin` the Vega app sends. It ends with a 60–90 s clip and a 6–10 s GIF.
 
 **Who:** the operator (the stick, the phone, a speaker, filming, any tunnel) and an agent or second person at the dev machine (hub, commands, numbers). **Time:** about 90 minutes. **Never fill a number in by hand:** every number comes from `scripts/bench.mjs` over a hub log written during the run.
 
-Produces `r1-scripted.log`, `r1-phone.log`, `r1-checks.log`, `bench-scripted.json`, `bench-phone.json` and the clip (`clip.mp4`) in the repo root, where git ignores them (they show room codes: move them to a scratch folder outside the repo afterwards), the GIF in `docs/`, and the notes in [Results](#results).
+Produces `stick-scripted.log`, `stick-phone.log`, `stick-checks.log`, `bench-scripted.json`, `bench-phone.json` and the clip (`clip.mp4`) in the repo root, where git ignores them (they show room codes: move them to a scratch folder outside the repo afterwards), the GIF in `docs/`, and the notes in [Results](#results).
 
 ## 0. Before you start
 
@@ -40,7 +40,7 @@ vega device info -d $D                               # architecture: armv7l (use
 ## 3. Hub, forward, app
 
 ```bash
-node examples/vega-voice-loop/hub.mjs --port 8790 | tee r1-scripted.log          # terminal A
+node examples/vega-voice-loop/hub.mjs --port 8790 | tee stick-scripted.log       # terminal A
 vega device start-port-forwarding -d $D --port 8790 --forward false             # terminal B
 vega device terminate-app -d $D --appName com.tvvoicebridge.loop.main           # run-app does not restart a running app
 vega run-app examples/vega-voice-loop/vega/build/armv7-release/tv-voice-bridge-voiceloop_armv7.vpkg com.tvvoicebridge.loop.main -d $D
@@ -60,8 +60,8 @@ node examples/vega-voice-loop/phone.mjs <CODE> --port 8790 --n 20 --gap 6000    
 Each utterance appears on the TV, the answer follows, the TV says it, and the hub prints a `{"event":"loop",...}` line, which the TV shows in its MEASURED rows (the current utterance shows as a pending row first). Then stop the hub (Ctrl-C) and:
 
 ```bash
-node scripts/bench.mjs r1-scripted.log --label "Fire TV Stick, scripted phone" > bench-scripted.json
-node scripts/bench.mjs r1-scripted.log --markdown
+node scripts/bench.mjs stick-scripted.log --label "Fire TV Stick, scripted phone" > bench-scripted.json
+node scripts/bench.mjs stick-scripted.log --markdown
 ```
 
 **Pass:** 20 loop lines, states all `ended`. Any `error: ...` state is a finding: record it as it is.
@@ -69,7 +69,7 @@ node scripts/bench.mjs r1-scripted.log --markdown
 ## 5. Run B: a real phone speaking, N≥10
 
 ```bash
-node examples/vega-voice-loop/hub.mjs --port 8790 | tee r1-phone.log            # add --public-url https://<tunnel host> for an iPhone
+node examples/vega-voice-loop/hub.mjs --port 8790 | tee stick-phone.log         # add --public-url https://<tunnel host> for an iPhone
 ```
 
 The TV keeps its code (it resumes its room). On the phone, scan the TV's QR. The page should say "paired with <CODE>" and show **Hold to talk** (if it says voice is off, the secure-page step from 0 is missing). Turn on **Hands-free**, then say these, one at a time, waiting each time for the TV to finish speaking:
@@ -88,7 +88,7 @@ The TV keeps its code (it resumes its room). On the phone, scan the TV's QR. The
 **Watch for:** the phone shows "The TV is talking; not listening to it." while the TV speaks, and the TV never receives its own words back (the hub's `said` values are only what you said). Stop the hub, then:
 
 ```bash
-node scripts/bench.mjs r1-phone.log --label "Fire TV Stick, real phone (<browser and phone model>)" > bench-phone.json
+node scripts/bench.mjs stick-phone.log --label "Fire TV Stick, real phone (<browser and phone model>)" > bench-phone.json
 ```
 
 Here `speech.end` is the browser's `speechend`, so `heardMs` (speech end → reply audible) includes the recognizer's tail. That is the number for the README's hero caption.
@@ -97,7 +97,7 @@ Here `speech.end` is the browser's `speechend`, so `heardMs` (speech end → rep
 
 ```bash
 RESPOND_CMD='printf "%s" "This is a long answer, so that you have time to talk over me. I will keep talking for a few more seconds, until you say something."' \
-  node examples/vega-voice-loop/hub.mjs --port 8790 | tee r1-checks.log
+  node examples/vega-voice-loop/hub.mjs --port 8790 | tee stick-checks.log
 ```
 
 1. **Barge-in.** With hands-free on, say "hello". While the TV reads the long answer, say "stop, next question please". **Pass:** the TV stops mid-line, the phone shows "Stopped the TV.", the loop line's state is `interrupted`, and the hub then gets "stop, next question please" as the next utterance. Also try a push-to-talk press while the TV talks: pressing is itself a barge-in.
@@ -138,8 +138,8 @@ Keep it under about 5 MB. Optional, for the agent beat: one real model call, wit
 - **Retire the filmed code:** relaunch the app (`terminate-app`, then `run-app`); the old room closes a minute later.
 - `vega device stop-port-forwarding -d $D --port 8790 --forward false`; stop any tunnel.
 - **Back to the default address:** `rm -f examples/vega-voice-loop/vega/src/hub.local.json`, so the next build dials `127.0.0.1:8790` again. `git status` then shows only what you meant to change (the GIF and the docs below): git ignores the local address file, the logs, `bench-*.json` and `clip.mp4`.
-- **Fill the placeholders from the JSON, never by hand:**
-  - `README.md`: the `R1 PLACEHOLDER` block at the top (the GIF and its caption: `heardMs` p50 and p95, N, the phone and browser) and the "Fire TV Stick, real phone" column (p50 / p95 per leg from `bench-phone.json`, with `bench-scripted.json` alongside if it helps); then remove the placeholder comments and the matching check in `test/docs.test.ts`.
+- **Fill in the stick from the JSON, never by hand:**
+  - `README.md`: add the GIF at the top, captioned with `heardMs` p50 and p95, N, the phone and the browser, and change the "Measured on the Vega Virtual Device" line above it to say what was measured where. Fill the "Fire TV Stick, real phone" column (p50 / p95 per leg from `bench-phone.json`, with `bench-scripted.json` alongside if it helps), remove the comment under that table, and change the column check in `test/docs.test.ts` in the same commit: it fails while any cell there says something other than "not measured yet".
   - `docs/vega-notes.md`: the three **To test on the stick** items (plain-http URL mode, the Alexa button, the `Origin`).
   - The Known limits in the README.
 - Keep the logs and the JSON with the run's notes, outside the repo (they contain room codes).

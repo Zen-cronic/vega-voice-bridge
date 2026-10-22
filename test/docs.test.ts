@@ -74,10 +74,20 @@ describe('docs', () => {
     expect(readme).not.toMatch(/not run on a device/);
   });
 
-  it('a placeholder for the real-stick run is marked as one, and no stick number is claimed before it exists', () => {
-    const readme = read('README.md');
-    expect(readme).toContain('R1 PLACEHOLDER');
-    const stickColumn = readme.split('\n').filter((l) => l.startsWith('| ') && l.split('|').length === 5 && /pending \(R1\)/.test(l));
-    expect(stickColumn.length).toBeGreaterThanOrEqual(4);
+  it('no Fire TV Stick number is claimed before a measured run exists, and the first screen has an image', () => {
+    const lines = read('README.md').split('\n');
+    const header = lines.findIndex((l) => l.startsWith('| Leg (hub clock) |') && l.trimEnd().endsWith('| Fire TV Stick, real phone |'));
+    expect(header).toBeGreaterThan(-1);
+    const rows: string[] = [];
+    for (let i = header + 2; lines[i]?.startsWith('| '); i++) rows.push(lines[i]!);
+    expect(rows.length).toBeGreaterThanOrEqual(4);
+    // A stick number comes only from bench-phone.json after the run (scripts/stick-run.md), which changes this check
+    // in the same commit. A number typed into this column by hand fails here.
+    for (const row of rows) expect(row.split('|').at(-2)!.trim(), row).toBe('*not measured yet*');
+    expect(lines.slice(0, 15).some((l) => l.startsWith('!['))).toBe(true);
+  });
+
+  it('the public docs carry no internal plan labels', () => {
+    for (const file of files) expect(read(file), file).not.toMatch(/\bR\d{1,2}\b|PLACEHOLDER/);
   });
 });

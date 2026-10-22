@@ -4,10 +4,11 @@
 
 **Two-way voice for Fire TV (Vega) apps and AI agents: the phone listens, your agent answers, the TV shows it and says it. Echo guard, barge-in, every hop timed. No phone app.**
 
-<!-- R1 PLACEHOLDER: replace this block with the 6–10 s GIF from the measured Fire TV Stick run (scripts/stick-run.md),
-     captioned with its measured number: "Fire TV Stick, real phone, hub clock: speech end → reply audible <p50> ms (p95 <p95> ms, N=<n>)".
-     Do not fill in a number that the run did not produce. -->
-> **Real-device proof: pending.** The measured Fire TV Stick run with a real phone ([scripts/stick-run.md](scripts/stick-run.md)) has not been published yet. Until it is, every Vega number on this page is from the Vega Virtual Device.
+**Measured on the Vega Virtual Device.** Version 0.3.5 has also run on a Fire TV Stick inside Spee, my speaking coach on Bee, whose Fire TV app pairs with its phone page through the bridge. That stick run was not measured.
+
+![The voice loop on the Vega Virtual Device: the pairing QR, what was said, the answer, audio playing, and the measured legs](docs/vvd-voice-loop.png)
+
+*The [Vega voice loop example](examples/vega-voice-loop) on the Vega Virtual Device. The metrics rows are replies that have finished playing, so in this capture the row for "what time is it" had not landed yet. Since 0.4.0 the TV shows the current utterance as a pending row until its reply ends.*
 
 **Where things run:** the hub on a laptop, a LAN box or a container (Node 20+) · the TV app (React Native for Vega, or a web page) · the phone's browser (Web Speech; nothing to install). **Proof:** tests on Node 20, 22 and 24 in CI · the Vega example type-checked against the real React Native for Vega packages · a written wire protocol (v1) with conformance tests · MIT.
 
@@ -199,7 +200,7 @@ const tv = useVoiceBridge({
 - **Say lines play one at a time** through your `player`. Lines come from the hub, or from the TV's own `say(text)`. `high` priority interrupts the current line, and so does a phone's barge-in (`interruptible`, default true). Every state is reported on `screen.say.status`, with the line's text, which is what keeps the phone's echo guard in step. With no player, lines are captions only and are reported as `no-audio`.
 - **Callbacks and the player are read from the latest render,** so inline functions are fine. The connection is rebuilt only when `url`, `code`, `name`, `clientId`, `resumeToken`, `sayTopic` or `enabled` change. Unmounting closes it.
 - **`<PairingQr value size? ecc? quietZone? dark? light? testID? />`** draws one `View` per horizontal run of dark modules over a light square. The square includes the 4-module quiet zone and uses whole-number cells. Its default `testID` is `pairing-qr`.
-- **Where it has run.** The Vega voice-loop example runs on the hook on the VVD (measured below). Spee, which uses `BridgeClient` and `PairingQr`, ran on a Fire TV Stick on 2026-10-20; that run was not measured. The tests use react-test-renderer and React 18 with a host-component mock of `react-native`.
+- **Where it has run.** The Vega voice-loop example runs on the hook on the VVD (measured below). Spee, which uses `BridgeClient` and `PairingQr` from version 0.3.5, ran on a Fire TV Stick on 2026-10-20; that run was not measured. The tests use react-test-renderer and React 18 with a host-component mock of `react-native`.
 
 ## The TV speaks back on Vega (`./vega`)
 
@@ -211,22 +212,18 @@ const tv = useVoiceBridge({
 - Each line reports `loading`, `playing` (when sound starts), then `ended`, `interrupted` or `error` on `screen.say.status`, so the hub can time it and the phone's echo guard knows when the TV is audible.
 - Encode clips with ffmpeg: `-c:a aac -movflags +frag_keyframe+empty_moov+default_base_moof -f mp4`. [`examples/vega-voice-loop/tts.mjs`](examples/vega-voice-loop/tts.mjs) does it from macOS `say`, Linux `espeak`, Amazon Polly or any command (`TTS_CMD`).
 
-[`examples/vega-voice-loop`](examples/vega-voice-loop) is the whole loop as a Vega app: the pairing QR, the phone's words as they arrive, the answer, the answer said out loud, and the hub's measurements of each loop, shown on the TV.
+[`examples/vega-voice-loop`](examples/vega-voice-loop) is the whole loop as a Vega app: the pairing QR, the phone's words as they arrive, the answer, the answer said out loud, and the hub's measurements of each loop, shown on the TV. The screenshot at the top of this page is that app.
 
 | Leg (hub clock) | Vega Virtual Device (SDK 0.24), scripted phone, 4 utterances | Fire TV Stick, real phone |
 |---|---|---|
-| speech end → answer on screen | 11–46 ms | *pending (R1)* |
-| `screen.say` → audio playing | 72–175 ms | *pending (R1)* |
-| **speech end → reply audible** | **217–322 ms** | *pending (R1)* |
-| replies played to the end | 4 of 4 | *pending (R1)* |
+| speech end → answer on screen | 11–46 ms | *not measured yet* |
+| `screen.say` → audio playing | 72–175 ms | *not measured yet* |
+| **speech end → reply audible** | **217–322 ms** | *not measured yet* |
+| replies played to the end | 4 of 4 | *not measured yet* |
 
-<!-- R1 PLACEHOLDER: fill the right-hand column from bench.json (p50 / p95 and N per leg) after the stick run; never estimate. -->
+<!-- The right-hand column is filled only from bench-phone.json after a measured stick run (scripts/stick-run.md), never by hand. test/docs.test.ts fails if a number appears there before then. -->
 
 The scripted phone stamps `speech.end` when it sends the final, so a real phone's recognizer tail comes on top. Text-to-speech (espeak, about 140 ms) runs while the answer is already on screen. Measured earlier in the first app built on the bridge, on the VVD: phone tap → TV render 6–69 ms over a reverse port forward, and `screen.say` → audio playing from a presigned S3 MP3 166–224 ms. A web TV on the same host is under 40 ms end to end.
-
-![The voice loop on the Vega Virtual Device: the pairing QR, what was said, the answer, audio playing, and the measured legs](docs/vvd-voice-loop.png)
-
-*The metrics rows are replies that have finished playing, so in this capture the row for "what time is it" had not landed yet. Since 0.4.0 the TV shows the current utterance as a pending row until its reply ends.*
 
 ## The round trip
 
@@ -382,7 +379,7 @@ A pairing code is 4 characters from a 31-character alphabet (923,521 codes). Any
 
 ## Known limits
 
-- **No measured real-stick run yet.** The Vega numbers are from the Vega Virtual Device; the Fire TV Stick column above is pending ([scripts/stick-run.md](scripts/stick-run.md)).
+- **The Fire TV Stick is not measured yet.** Every Vega number here is from the Vega Virtual Device. Version 0.3.5 has run on a stick inside Spee, with no measurements. [scripts/stick-run.md](scripts/stick-run.md) is the measured run, step by step.
 - **Plain-http audio in URL mode, after Amazon's September 2026 OS update,** and **what happens when Alexa backgrounds the app,** are untested; both are steps of the stick run. The client's heartbeat and reconnect should recover a suspended connection.
 - **`AudioRecordStream` is untested.** We have not tested which microphone it reaches on a stick (see Why).
 - **No end-to-end encryption.** Transport security is TLS between each device and the hub.
