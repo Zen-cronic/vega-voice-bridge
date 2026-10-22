@@ -5,7 +5,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: tv-voice-bridge version
+      label: vega-voice-bridge version
       placeholder: 0.4.1
     validations:
       required: true
@@ -14,8 +14,8 @@ body:
     attributes:
       label: Which part
       options:
-        - hub or CLI (tv-voice-bridge/hub, tv-voice-bridge-hub)
-        - client (tv-voice-bridge)
+        - hub or CLI (vega-voice-bridge/hub, vega-voice-bridge-hub)
+        - client (vega-voice-bridge)
         - phone page or ./phone
         - React hook or PairingQr (./react)
         - Vega say player (./vega)

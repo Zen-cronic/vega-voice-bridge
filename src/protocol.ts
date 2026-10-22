@@ -1,5 +1,5 @@
 /**
- * tv-voice-bridge protocol v1: a voice back-and-forth between a phone, an app or agent, and a TV.
+ * vega-voice-bridge protocol v1: a voice back-and-forth between a phone, an app or agent, and a TV.
  *
  * Roles: `screen` (the TV app), `mic` (a phone), and the hub (a small WebSocket server).
  * Every utterance carries `hops`: timestamps in HUB clock (clients correct with ping/pong offset),

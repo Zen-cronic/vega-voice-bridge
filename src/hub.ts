@@ -312,7 +312,7 @@ function originSet(origins: string[]): Set<string> {
   const set = new Set<string>();
   for (const o of origins) {
     const n = /^[a-z][a-z0-9+.-]*:\/\/[^/]*\/?$/i.test(o.trim()) ? normalizeOrigin(o) : null;
-    if (!n) throw new Error(`tv-voice-bridge: not an http(s) origin: ${o}`);
+    if (!n) throw new Error(`vega-voice-bridge: not an http(s) origin: ${o}`);
     set.add(n);
   }
   return set;
@@ -352,7 +352,7 @@ export function proxyMatcher(proxies: string[] = []): (addr: string) => boolean 
     const family = isIP(bareIp(ip));
     const max = family === 6 ? 128 : 32;
     const prefix = bits === undefined ? max : /^\d{1,3}$/.test(bits) ? Number(bits) : NaN;
-    if (!family || extra !== undefined || !(prefix >= 0 && prefix <= max)) throw new Error(`tv-voice-bridge: not an address or CIDR range: ${p}`);
+    if (!family || extra !== undefined || !(prefix >= 0 && prefix <= max)) throw new Error(`vega-voice-bridge: not an address or CIDR range: ${p}`);
     list.addSubnet(bareIp(ip), prefix, family === 6 ? 'ipv6' : 'ipv4');
   }
   return (addr) => {
@@ -628,7 +628,7 @@ export class BridgeHub {
   /** Create a room (or return the live one with that code). Throws only when the hub is full; the hub itself never calls this form. */
   createRoom(code?: string): Room {
     const r = this.tryCreateRoom(code);
-    if (!r) throw new Error('tv-voice-bridge: no free room (maxRooms reached)');
+    if (!r) throw new Error('vega-voice-bridge: no free room (maxRooms reached)');
     return r;
   }
 

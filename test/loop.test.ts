@@ -37,7 +37,7 @@ describe('npm run example: the loop in one process', () => {
   }, 20_000);
 });
 
-describe('tv-voice-bridge-hub (CLI)', () => {
+describe('vega-voice-bridge-hub (CLI)', () => {
   afterEach(() => void vi.unstubAllGlobals());
 
   it('parses its flags, with defaults', () => {
@@ -58,9 +58,9 @@ describe('tv-voice-bridge-hub (CLI)', () => {
     try {
       // A host app whose own entry happens to be called cli.js, or a bin of the same name elsewhere.
       writeFileSync(join(dir, 'cli.js'), '');
-      writeFileSync(join(dir, 'tv-voice-bridge-hub'), '');
+      writeFileSync(join(dir, 'vega-voice-bridge-hub'), '');
       expect(isEntry(join(dir, 'cli.js'), self)).toBe(false);
-      expect(isEntry(join(dir, 'tv-voice-bridge-hub'), self)).toBe(false);
+      expect(isEntry(join(dir, 'vega-voice-bridge-hub'), self)).toBe(false);
       expect(isEntry(undefined, self)).toBe(false);
       expect(isEntry(join(dir, 'missing.js'), self)).toBe(false);
       // Run directly, or through the bin link npm makes.
@@ -79,7 +79,7 @@ describe('tv-voice-bridge-hub (CLI)', () => {
     expect(typeof serve.servePhonePage).toBe('function');
     expect(typeof serve.lanAddress).toBe('function');
     const example = await import('node:fs').then((fs) => fs.readFileSync(new URL('../examples/vega-voice-loop/hub.mjs', import.meta.url), 'utf8'));
-    expect(example).toContain("from 'tv-voice-bridge/serve'");
+    expect(example).toContain("from 'vega-voice-bridge/serve'");
     expect(example).not.toMatch(/dist\/cli\.js/);
   });
 
@@ -185,7 +185,7 @@ describe('tv-voice-bridge-hub (CLI)', () => {
     const log: string[] = [];
     const app = await startHubCli({ ...(parseHubArgs(['--port', '0', '--host', '127.0.0.1', '--public-url', 'https://tv.example', '--echo']) as Exclude<ReturnType<typeof parseHubArgs>, 'help'>) }, (l) => log.push(l));
     try {
-      expect(log[0]).toBe(`tv-voice-bridge hub on ws://127.0.0.1:${app.port}/ws`);
+      expect(log[0]).toBe(`vega-voice-bridge hub on ws://127.0.0.1:${app.port}/ws`);
       expect(log[1]).toMatch(/^phones join at https:\/\/tv\.example\/p\/<CODE>/);
       const url = `ws://127.0.0.1:${app.port}/ws`;
       const tv = new BridgeClient({ url, role: 'screen', reconnect: false });

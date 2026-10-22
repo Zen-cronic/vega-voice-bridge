@@ -1,5 +1,5 @@
 /**
- * Minimal React Native for Vega screen for tv-voice-bridge: pair, show what the phone heard and the answer,
+ * Minimal React Native for Vega screen for vega-voice-bridge: pair, show what the phone heard and the answer,
  * and say the answer out loud. The full, built and measured version is examples/vega-voice-loop.
  *
  * Drop it into a `vega project generate` app that has this package and @amazon-devices/react-native-w3cmedia
@@ -14,8 +14,8 @@
  */
 import React, {useEffect, useMemo} from 'react';
 import {Text, View} from 'react-native';
-import {PairingQr, useVoiceBridge} from 'tv-voice-bridge/react';
-import {createVegaSayPlayer} from 'tv-voice-bridge/vega';
+import {PairingQr, useVoiceBridge} from 'vega-voice-bridge/react';
+import {createVegaSayPlayer} from 'vega-voice-bridge/vega';
 
 // The voice-loop hub (node examples/vega-voice-loop/hub.mjs): it serves the fragmented MP4 clips the player needs.
 // The web-TV examples on 8800 send text only, so the TV would show captions and report "no audioUrl".

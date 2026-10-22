@@ -13,9 +13,9 @@ import { createServer } from 'node:http';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BridgeHub, localOriginPolicy } from 'tv-voice-bridge/hub';
-import { latency } from 'tv-voice-bridge';
-import { lanAddress, servePhonePage } from 'tv-voice-bridge/serve';
+import { BridgeHub, localOriginPolicy } from 'vega-voice-bridge/hub';
+import { latency } from 'vega-voice-bridge';
+import { lanAddress, servePhonePage } from 'vega-voice-bridge/serve';
 import { createResponder } from './respond.mjs';
 import { createTts } from './tts.mjs';
 

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * tv-voice-bridge-hub: run a hub on its own and print where phones join.
+ * vega-voice-bridge-hub: run a hub on its own and print where phones join.
  *
- *   tv-voice-bridge-hub --port 8790 --public-url https://tv.example.com
+ *   vega-voice-bridge-hub --port 8790 --public-url https://tv.example.com
  *
  * The hub relays transcripts, intents, acks and say lines between TVs and phones, and serves a phone page at the
  * join URL it prints. With `--echo` it also answers each final itself ("You said: ..."), which is enough to try the
@@ -15,7 +15,7 @@ import { parseArgs } from 'node:util';
 import { BridgeHub, forwardedClientKey, localOriginPolicy, normalizeOrigin, proxyMatcher } from './hub.js';
 import { lanAddress, servePhonePage } from './serve.js';
 
-const HELP = `Usage: tv-voice-bridge-hub [options]
+const HELP = `Usage: vega-voice-bridge-hub [options]
 
   --port <n>          Port to listen on (default 8790, or $PORT)
   --host <addr>       Address to bind (default 0.0.0.0)
@@ -134,7 +134,7 @@ export async function startHubCli(o: HubCliOptions, log: (line: string) => void 
       }
       if (servePhonePage(req, res, { path: o.path })) return;
     }
-    res.writeHead(404, { 'content-type': 'text/plain' }).end('tv-voice-bridge hub: connect a WebSocket to ' + o.path + '\n');
+    res.writeHead(404, { 'content-type': 'text/plain' }).end('vega-voice-bridge hub: connect a WebSocket to ' + o.path + '\n');
   });
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
@@ -184,7 +184,7 @@ export async function startHubCli(o: HubCliOptions, log: (line: string) => void 
       if (!o.quiet) log(`room ${room.code}: ${peer.role === 'screen' ? 'TV' : 'phone'} left`);
     },
   });
-  log(`tv-voice-bridge hub on ws://${reachable}:${port}${o.path}`);
+  log(`vega-voice-bridge hub on ws://${reachable}:${port}${o.path}`);
   log(`phones join at ${joinUrl('<CODE>')} (each TV gets its code when it connects)`);
   if (o.echo) log('echo responder on: each final is answered "You said: ..."');
   log(
@@ -220,7 +220,7 @@ async function main() {
 
 /**
  * True only when Node was started with this very file as its entry (directly, or through the
- * `tv-voice-bridge-hub` bin link, which resolves to it). Importing this module never starts a hub, whatever the
+ * `vega-voice-bridge-hub` bin link, which resolves to it). Importing this module never starts a hub, whatever the
  * importer's own entry file is called.
  */
 export function isEntry(argv1: string | undefined, self: string = fileURLToPath(import.meta.url)): boolean {

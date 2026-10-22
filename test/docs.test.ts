@@ -66,7 +66,7 @@ describe('docs', () => {
   it("the README states this version, installs this version's tarball, and has no stale claims", () => {
     const readme = read('README.md');
     expect(readme).toContain(`Version **${pkg.version}**`);
-    expect(readme).toContain(`tv-voice-bridge-${pkg.version}.tgz`);
+    expect(readme).toContain(`vega-voice-bridge-${pkg.version}.tgz`);
     expect(readme).toContain(`#v${pkg.version}`);
     expect(readme).not.toMatch(/private for now/i);
     // Test counts drift; CI reports them.
@@ -87,8 +87,8 @@ describe('docs', () => {
     expect(lines.slice(0, 15).some((l) => l.startsWith('!['))).toBe(true);
   });
 
-  it('no doc tells npx to fetch the hub from npm: a bare `npx tv-voice-bridge-hub` looks for a package of that name', () => {
-    for (const file of files) expect(read(file), file).not.toMatch(/npx\s+(?!--no-install\b)[^\n`]*\btv-voice-bridge/);
+  it('no doc tells npx to fetch the hub from npm: a bare `npx vega-voice-bridge-hub` looks for a package of that name', () => {
+    for (const file of files) expect(read(file), file).not.toMatch(/npx\s+(?!--no-install\b)[^\n`]*\b(?:tv|vega)-voice-bridge/);
   });
 
   it('the public docs carry no internal plan labels', () => {

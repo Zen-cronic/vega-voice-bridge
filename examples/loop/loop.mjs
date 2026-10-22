@@ -8,9 +8,9 @@
 // reply, as a phone in the same room would, and the echo guard keeps it from coming back as a transcript.
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
-import { BridgeClient, latency } from 'tv-voice-bridge';
-import { BridgeHub } from 'tv-voice-bridge/hub';
-import { createPhoneMic } from 'tv-voice-bridge/phone';
+import { BridgeClient, latency } from 'vega-voice-bridge';
+import { BridgeHub } from 'vega-voice-bridge/hub';
+import { createPhoneMic } from 'vega-voice-bridge/phone';
 
 // Node 22+ has a global WebSocket; Node 20 does not, so use the hub's own `ws` there.
 const WebSocketImpl = globalThis.WebSocket ?? (await import('ws')).WebSocket;
@@ -124,7 +124,7 @@ export async function runLoop({ script = SCRIPT, log = (line) => console.log(lin
     }
   };
 
-  log(`tv-voice-bridge loop demo: hub, TV and phone in one process (room ${code})`);
+  log(`vega-voice-bridge loop demo: hub, TV and phone in one process (room ${code})`);
   log('in-process, this machine; scripted recognizer, speakerless TV (see examples/loop/loop.mjs)');
   const rows = [];
   for (const sentence of script) {

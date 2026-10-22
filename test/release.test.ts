@@ -39,9 +39,9 @@ describe('releases', () => {
     expect(releaseNotes('## 0.4.0\nx\n## 0.4.0-rc.1\ny\n', '0.4.0')).toBe('x');
   });
 
-  it('the Vega example installs the tarball of this version (npm pack writes tv-voice-bridge-<version>.tgz)', () => {
+  it('the Vega example installs the tarball of this version (npm pack writes vega-voice-bridge-<version>.tgz)', () => {
     const example = JSON.parse(read('examples/vega-voice-loop/vega/package.json')) as { name: string; dependencies: Record<string, string> };
-    expect(example.dependencies['tv-voice-bridge']).toBe(`file:../../../tv-voice-bridge-${pkg.version}.tgz`);
+    expect(example.dependencies['vega-voice-bridge']).toBe(`file:../../../vega-voice-bridge-${pkg.version}.tgz`);
     const lock = JSON.parse(read('package-lock.json')) as { version: string; packages: Record<string, { version?: string }> };
     expect([lock.version, lock.packages['']?.version]).toEqual([pkg.version, pkg.version]);
   });

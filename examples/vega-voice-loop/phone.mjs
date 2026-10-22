@@ -4,7 +4,7 @@
 // --n is how many lines to say (they repeat after the fourth), --gap the milliseconds between finals.
 // Its `speech.end` is stamped when the final is sent, so a real phone's recognizer tail is not included.
 import WebSocket from 'ws';
-import { BridgeClient, localNow } from 'tv-voice-bridge';
+import { BridgeClient, localNow } from 'vega-voice-bridge';
 
 const arg = (name, fallback) => (process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : fallback);
 const code = process.argv[2];

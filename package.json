@@ -1,23 +1,23 @@
 {
-  "name": "tv-voice-bridge",
+  "name": "vega-voice-bridge",
   "version": "0.4.1",
-  "private": true,
   "description": "Two-way voice for Fire TV (Vega) apps and AI agents: the phone listens, your agent answers, the TV shows it and says it. Echo guard, barge-in, every hop timed. No phone app.",
   "license": "MIT",
   "author": "Kaung Zin Hein",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Zen-cronic/tv-voice-bridge.git"
+    "url": "git+https://github.com/Zen-cronic/vega-voice-bridge.git"
   },
-  "homepage": "https://github.com/Zen-cronic/tv-voice-bridge#readme",
+  "homepage": "https://github.com/Zen-cronic/vega-voice-bridge#readme",
   "bugs": {
-    "url": "https://github.com/Zen-cronic/tv-voice-bridge/issues"
+    "url": "https://github.com/Zen-cronic/vega-voice-bridge/issues"
   },
   "type": "module",
   "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
+    "vega-voice-bridge-hub": "./dist/cli.js",
     "tv-voice-bridge-hub": "./dist/cli.js"
   },
   "exports": {
@@ -91,8 +91,10 @@
     "node": ">=20"
   },
   "keywords": [
-    "fire-tv",
     "vega",
+    "vega-os",
+    "fire-tv",
+    "amazon-fire-tv",
     "react-native",
     "tv",
     "voice",

@@ -2,8 +2,8 @@
 // answer said out loud, with the hub's measurements of each loop.
 import React, {useEffect, useMemo, useState} from 'react';
 import {StyleSheet, Text, View} from 'react-native';
-import {PairingQr, useVoiceBridge} from 'tv-voice-bridge/react';
-import {createVegaSayPlayer} from 'tv-voice-bridge/vega';
+import {PairingQr, useVoiceBridge} from 'vega-voice-bridge/react';
+import {createVegaSayPlayer} from 'vega-voice-bridge/vega';
 import hubDefault from './hub.json';
 
 type HubConfig = {hostport: string; httpUrlMode?: boolean};

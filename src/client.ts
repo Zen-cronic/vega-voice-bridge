@@ -176,7 +176,7 @@ export class BridgeClient {
       } catch (err) {
         try {
           if (this.opts.onHandlerError) this.opts.onHandlerError(err, type);
-          else globalThis.console?.error?.(`tv-voice-bridge: a "${type}" handler threw`, err);
+          else globalThis.console?.error?.(`vega-voice-bridge: a "${type}" handler threw`, err);
         } catch {
           // nothing left to report to
         }

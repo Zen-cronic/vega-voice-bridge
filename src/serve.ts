@@ -7,7 +7,7 @@
  *   });
  *   const hub = new BridgeHub({ server, path: '/ws', joinUrl: (code) => `http://${lanAddress()}:8790/p/${code}` });
  *
- * The CLI hub (`tv-voice-bridge-hub`) uses the same two helpers.
+ * The CLI hub (`vega-voice-bridge-hub`) uses the same two helpers.
  */
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -22,7 +22,7 @@ const PHONE_PAGE = join(PACKAGE_ROOT, 'examples', 'minimal-phone', 'phone.html')
 const LIB = join(PACKAGE_ROOT, 'dist');
 const TYPES: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.map': 'application/json' };
 
-/** The `<meta>` the phone page reads the hub's WebSocket path from. */
+/** The `<meta>` the phone page reads the hub's WebSocket path from. It keeps the name it had before the package was renamed, so pages and hubs of either name agree. */
 export const PHONE_PATH_META = 'tv-voice-bridge-path';
 const PATH_META = new RegExp(`<meta name="${PHONE_PATH_META}" content="[^"]*" */?>`);
 

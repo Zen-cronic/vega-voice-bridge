@@ -4,7 +4,7 @@
 //   TVB_HUB_URL=ws://host:port/ws npm run conformance  runs the same cases against any running hub
 //
 // The hub under test must answer each transcript.final with an intent and a screen.say line to the same room, as
-// `tv-voice-bridge-hub --echo` does, and must not check Origin for clients that send none. Each run makes two
+// `vega-voice-bridge-hub --echo` does, and must not check Origin for clients that send none. Each run makes two
 // wrong-code hellos, well inside any hub's guess budget.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';

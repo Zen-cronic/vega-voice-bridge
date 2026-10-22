@@ -294,7 +294,7 @@ export function useVoiceBridge(options: UseVoiceBridgeOptions): VoiceBridge {
       try {
         fn?.(...args);
       } catch (err) {
-        globalThis.console?.error?.('tv-voice-bridge: a useVoiceBridge callback threw', err);
+        globalThis.console?.error?.('vega-voice-bridge: a useVoiceBridge callback threw', err);
       }
     };
 

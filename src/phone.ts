@@ -31,7 +31,7 @@ const currentLocation = (): LocationLike | undefined => (globalThis as { locatio
 
 /** The hub's WebSocket URL on the page's own host: `wss://host/ws` on https, `ws://host/ws` otherwise. */
 export function hubUrlFromLocation(loc: LocationLike | undefined = currentLocation(), path = '/ws'): string {
-  if (!loc) throw new Error('tv-voice-bridge: no location to derive the hub URL from; pass url');
+  if (!loc) throw new Error('vega-voice-bridge: no location to derive the hub URL from; pass url');
   return `${loc.protocol === 'https:' ? 'wss' : 'ws'}://${loc.host}${path}`;
 }
 
@@ -51,7 +51,7 @@ export function connectPhone(opts: ConnectPhoneOptions = {}): BridgeClient {
   const { url, path, code, onError, ...rest } = opts;
   const loc = currentLocation();
   const joinCode = code ?? (loc ? codeFromPath(loc.pathname) : null);
-  if (!joinCode) throw new Error('tv-voice-bridge: no pairing code; pass code, or open the join URL (/p/<code>)');
+  if (!joinCode) throw new Error('vega-voice-bridge: no pairing code; pass code, or open the join URL (/p/<code>)');
   const client = new BridgeClient({ ...rest, url: url ?? hubUrlFromLocation(loc, path), role: 'mic', code: joinCode });
   client.connect().catch((err: unknown) => onError?.(err instanceof Error ? err : new Error(String(err))));
   return client;
@@ -464,7 +464,7 @@ export function createPhoneMic(opts: PhoneMicOptions): PhoneMic {
       try {
         (fn as (a: typeof arg) => void)(arg);
       } catch (err) {
-        globalThis.console?.error?.(`tv-voice-bridge: a phone mic "${event}" handler threw`, err);
+        globalThis.console?.error?.(`vega-voice-bridge: a phone mic "${event}" handler threw`, err);
       }
     }
   };

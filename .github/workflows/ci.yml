@@ -82,7 +82,7 @@ jobs:
           cache: npm
       - name: Install
         run: npm ci --no-audit --no-fund
-      - name: Pack (writes tv-voice-bridge-<version>.tgz, the file the example depends on)
+      - name: Pack (writes vega-voice-bridge-<version>.tgz, the file the example depends on)
         run: npm pack
       - name: Install the example
         working-directory: examples/vega-voice-loop/vega

@@ -1,5 +1,5 @@
 {
-  "about": "Wire vectors for tv-voice-bridge protocol v1 (PROTOCOL.md). `valid`: messages a conforming decoder accepts unchanged (encode, then decode, gives the same object). `invalid`: frames it must refuse; a hub answers each with error bad-message. `normalized`: frames that decode to `decoded` (null optional fields dropped, missing hops read as []). Any language can load this file.",
+  "about": "Wire vectors for vega-voice-bridge protocol v1 (PROTOCOL.md). `valid`: messages a conforming decoder accepts unchanged (encode, then decode, gives the same object). `invalid`: frames it must refuse; a hub answers each with error bad-message. `normalized`: frames that decode to `decoded` (null optional fields dropped, missing hops read as []). Any language can load this file.",
   "protocolVersion": 1,
   "codeAlphabet": "ABCDEFGHJKMNPQRSTUVWXYZ23456789",
   "valid": [

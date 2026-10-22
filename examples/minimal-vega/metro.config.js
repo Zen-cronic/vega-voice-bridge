@@ -1,4 +1,4 @@
-// OPTIONAL. Only needed to bundle tv-voice-bridge from its TypeScript source (a git submodule or a monorepo folder).
+// OPTIONAL. Only needed to bundle vega-voice-bridge from its TypeScript source (a git submodule or a monorepo folder).
 // Installed from npm or a packed tarball, Metro resolves the built dist/ through the package's exports, and the
 // default Vega Metro config works unchanged.
 //
@@ -8,7 +8,7 @@
 const path = require('path');
 const {getDefaultConfig, mergeConfig} = require('@react-native/metro-config');
 
-const bridgeSrc = path.resolve(__dirname, '../tv-voice-bridge/src'); // adjust to where the package lives
+const bridgeSrc = path.resolve(__dirname, '../vega-voice-bridge/src'); // adjust to where the package lives
 const KEPLER_RN = '@amazon-devices/react-native-kepler';
 
 module.exports = mergeConfig(getDefaultConfig(__dirname), {
