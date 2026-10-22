@@ -214,6 +214,8 @@ const tv = useVoiceBridge({
 
 [`examples/vega-voice-loop`](examples/vega-voice-loop) is the whole loop as a Vega app: the pairing QR, the phone's words as they arrive, the answer, the answer said out loud, and the hub's measurements of each loop, shown on the TV. The screenshot at the top of this page is that app.
 
+These numbers are the bridge's own path (phone final → TV → reply audio) with the example's offline rules and espeak; they leave out an agent's thinking time and cloud text-to-speech, so an app with a model in the loop adds that model's latency on top.
+
 | Leg (hub clock) | Vega Virtual Device (SDK 0.24), scripted phone, N=20, p50 / p95 | Fire TV Stick, real phone |
 |---|---|---|
 | speech end → answer on screen | 83 / 114 ms | *not measured yet* |
