@@ -1,6 +1,8 @@
-# tv-voice-bridge
+# vega-voice-bridge
 
-[![CI](https://github.com/Zen-cronic/tv-voice-bridge/actions/workflows/ci.yml/badge.svg)](https://github.com/Zen-cronic/tv-voice-bridge/actions/workflows/ci.yml)
+Voice input and spoken replies for Vega / Fire TV apps, from the phone in your hand.
+
+[![CI](https://github.com/Zen-cronic/vega-voice-bridge/actions/workflows/ci.yml/badge.svg)](https://github.com/Zen-cronic/vega-voice-bridge/actions/workflows/ci.yml)
 
 **Two-way voice for Fire TV (Vega) apps and AI agents: the phone listens, your agent answers, the TV shows it and says it. Echo guard, barge-in, every hop timed. No phone app.**
 
@@ -20,16 +22,16 @@ The phone's own recognizer turns speech into text. Your `onFinal` handler, wheth
 
 | Import | What it is |
 |---|---|
-| `tv-voice-bridge` | The framework-agnostic client for both roles (React Native for Vega, web TVs, Node), plus the protocol types |
+| `vega-voice-bridge` | The framework-agnostic client for both roles (React Native for Vega, web TVs, Node), plus the protocol types |
 | `…/react` | `useVoiceBridge()` and `<PairingQr>` for the TV, with no native dependencies |
 | `…/vega` | `createVegaSayPlayer()`: the TV speaks back on Vega OS, from a plain-http hub ([below](#the-tv-speaks-back-on-vega-vega)) |
 | `…/phone` | The voice half for a phone browser page: Web Speech in, transcripts out, the [echo guard](#the-echo-guard) and barge-in |
-| `…/hub` | The Node hub, and the `tv-voice-bridge-hub` CLI |
+| `…/hub` | The Node hub, and the `vega-voice-bridge-hub` CLI |
 | `…/serve` | `servePhonePage()` and `lanAddress()`: the shipped phone page, from your own server |
 | `…/qr` | A dependency-free QR Code encoder for the pairing screen |
 | [PROTOCOL.md](PROTOCOL.md) | The wire protocol (v1), for a second implementation on another platform |
 
-Version **0.4.1**, protocol v1 revision 3 ([CHANGELOG.md](CHANGELOG.md)). Not on npm: [install](#install) it from git or a release tarball.
+Version **0.4.1**, protocol v1 revision 3 ([CHANGELOG.md](CHANGELOG.md)). On npm as `vega-voice-bridge` from 0.4.2: `npm install vega-voice-bridge` ([install](#install)).
 
 ## The whole loop in one command
 
@@ -113,18 +115,25 @@ What the hub and your `onFinal` do with the text is your app's privacy surface. 
 ## Install
 
 ```bash
-npm install github:Zen-cronic/tv-voice-bridge          # builds dist/ on install (the prepare script)
-npm install github:Zen-cronic/tv-voice-bridge#v0.4.1   # a release tag
+npm install vega-voice-bridge     # from npm, from 0.4.2
 ```
 
-Each [GitHub release](https://github.com/Zen-cronic/tv-voice-bridge/releases) also carries the packed tarball. Or pack it yourself:
+Or from a GitHub tag, which builds dist/ on install (the prepare script):
+
+```bash
+npm install github:Zen-cronic/vega-voice-bridge#v0.4.1   # a release tag
+```
+
+Each [GitHub release](https://github.com/Zen-cronic/vega-voice-bridge/releases) also carries the packed tarball. Or pack it yourself:
 
 ```bash
 npm pack --pack-destination ../my-app/vendor     # in this repo; builds first
-cd ../my-app && npm install ./vendor/tv-voice-bridge-0.4.1.tgz
+cd ../my-app && npm install ./vendor/vega-voice-bridge-0.4.1.tgz
 ```
 
-Prefer a tarball for Vega builds: Metro may not follow the symlink that `npm link` or a git checkout makes. The hub needs `ws` (an optional peer dependency). The client needs nothing in a browser, in React Native or on Node 22 and later; Node 20 has no global `WebSocket`, so there pass the one from `ws` as `WebSocketImpl`. `./react` needs `react` 18 or later and a `react-native` your bundler resolves (React Native for Vega, or react-native-web); both are optional peer dependencies that only `./react` imports. `./vega` needs `@amazon-devices/react-native-w3cmedia` (optional too).
+Until 0.4.1 the package was called `tv-voice-bridge` and was not on npm; links to the old repository redirect here, and the wire protocol did not change with the name.
+
+For Vega builds, install from npm or a tarball: Metro may not follow the symlink that `npm link` or a git checkout makes. The hub needs `ws` (an optional peer dependency). The client needs nothing in a browser, in React Native or on Node 22 and later; Node 20 has no global `WebSocket`, so there pass the one from `ws` as `WebSocketImpl`. `./react` needs `react` 18 or later and a `react-native` your bundler resolves (React Native for Vega, or react-native-web); both are optional peer dependencies that only `./react` imports. `./vega` needs `@amazon-devices/react-native-w3cmedia` (optional too).
 
 ## Quick start: an agent on a web TV (2 minutes)
 
@@ -149,8 +158,8 @@ The TV half is a hook, a QR and a player:
 
 ```tsx
 import { useMemo } from 'react';
-import { PairingQr, useVoiceBridge } from 'tv-voice-bridge/react';
-import { createVegaSayPlayer } from 'tv-voice-bridge/vega';
+import { PairingQr, useVoiceBridge } from 'vega-voice-bridge/react';
+import { createVegaSayPlayer } from 'vega-voice-bridge/vega';
 
 const HUB = '127.0.0.1:8790';   // node examples/vega-voice-loop/hub.mjs (a reverse port forward on the VVD)
 
@@ -172,7 +181,7 @@ export function App() {
 - **Built-in client defences.** The client reassembles messages that arrive split across events, and its heartbeat drops a link that goes silent even when `onclose` never fires.
 - **Audio: https in URL mode, or fragmented MP4/AAC over plain http.** The W3C media player (`@amazon-devices/react-native-w3cmedia`) plays an `https://` URL only with a publicly trusted certificate (a local CA is refused). Over `http://` it plays only through Media Source Extensions, and only fragmented MP4 with AAC: raw MP3 through MSE never starts. `./vega` handles both; see [below](#the-tv-speaks-back-on-vega-vega).
 - **Metro, only when bundling from source.** The package source uses TS-ESM imports (`./protocol.js`), so map them to `.ts` in a custom `resolveRequest`. A custom resolver replaces Vega's own, so also re-apply the `react-native` → `@amazon-devices/react-native-kepler` mapping; without it the bundle ships core React Native and the app aborts at launch. See [`examples/minimal-vega/metro.config.js`](examples/minimal-vega/metro.config.js).
-- **React Native 0.72 Vega apps (Metro before 0.82).** The subpaths (`tv-voice-bridge/react`, `/vega`, `/qr`) resolve through the package's `exports`, which Metro reads by default only from 0.82 (React Native 0.83 for Vega). On the 0.72 line, turn it on in `metro.config.js`: `mergeConfig(getDefaultConfig(__dirname), { resolver: { unstable_enablePackageExports: true } })`. That switch applies to every package the app bundles, so rebuild and launch once after setting it. This repo's Vega example and its CI typecheck use React Native 0.83; the 0.72 setting is not tested here.
+- **React Native 0.72 Vega apps (Metro before 0.82).** The subpaths (`vega-voice-bridge/react`, `/vega`, `/qr`) resolve through the package's `exports`, which Metro reads by default only from 0.82 (React Native 0.83 for Vega). On the 0.72 line, turn it on in `metro.config.js`: `mergeConfig(getDefaultConfig(__dirname), { resolver: { unstable_enablePackageExports: true } })`. That switch applies to every package the app bundles, so rebuild and launch once after setting it. This repo's Vega example and its CI typecheck use React Native 0.83; the 0.72 setting is not tested here.
 - **`performance.timeOrigin`.** It may be missing on some runtimes. The client falls back on its own; polyfill it as `Date.now() - performance.now()` if your code stamps `receivedAt` itself.
 
 ## The React hook (`./react`)
@@ -269,7 +278,7 @@ Every utterance carries `hops: [{hop, at}]` in **hub clock**. Each client estima
 
 ```ts
 import http from 'node:http';
-import { BridgeHub } from 'tv-voice-bridge/hub';   // needs `ws`
+import { BridgeHub } from 'vega-voice-bridge/hub';   // needs `ws`
 
 const server = http.createServer(app);
 const hub = new BridgeHub({
@@ -286,15 +295,15 @@ const hub = new BridgeHub({
 
 The hub is defensive by construction. No frame, upgrade request or app callback can throw out of it. Every field of every message is validated, and anything bad gets a typed error instead of a crash. A handler that throws gives the room `handler-failed` with the generic message "handler failed"; the exception text goes to the hub's log.
 
-The CLI is the same hub with a phone page. In a clone of this repo, run `npm run hub -- --port 8790` (add `--echo` to answer each final with "You said: …"). In an app that installed the package, run `npx --no-install tv-voice-bridge-hub --port 8790`. The command is this package's bin, and `--no-install` stops npx from downloading some other npm package that happens to have that name. Either way, it prints the WebSocket URL and the join URL built from this machine's LAN address. [docs/deploy.md](docs/deploy.md) has the rest: every hub option and limit, containers, reverse proxies and tunnels (`--trust-proxy` and `X-Forwarded-For`), the Origin check, serving the phone page from your own server, and what `hub.stats` and the log report.
+The CLI is the same hub with a phone page. In a clone of this repo, run `npm run hub -- --port 8790` (add `--echo` to answer each final with "You said: …"). In an app that installed the package, run `npx --no-install vega-voice-bridge-hub --port 8790`. The command is this package's bin, and `--no-install` stops npx from downloading some other npm package that happens to have that name. Either way, it prints the WebSocket URL and the join URL built from this machine's LAN address. [docs/deploy.md](docs/deploy.md) has the rest: every hub option and limit, containers, reverse proxies and tunnels (`--trust-proxy` and `X-Forwarded-For`), the Origin check, serving the phone page from your own server, and what `hub.stats` and the log report.
 
 ## Phone (`./phone`)
 
 The phone is a web page; nothing is installed on it. [`examples/minimal-phone/phone.html`](examples/minimal-phone/phone.html) is a complete one, with hold-to-talk, hands-free, a stop button, typed input, a code entry when opened without a code, and an explanation when voice cannot work on that page.
 
 ```ts
-import { latency } from 'tv-voice-bridge';
-import { connectPhone, createPhoneMic, voiceSupport } from 'tv-voice-bridge/phone';
+import { latency } from 'vega-voice-bridge';
+import { connectPhone, createPhoneMic, voiceSupport } from 'vega-voice-bridge/phone';
 
 const voice = voiceSupport();                       // { ok, reason?, message, fixes[] }: show it when !voice.ok
 const phone = connectPhone();                       // hub URL and code from this page's address (/p/K7QF)
@@ -332,7 +341,7 @@ The TV side honours `screen.say.stop` in `useVoiceBridge` (default) and in the e
 The pairing screen shows the join URL as a QR code. `./qr` encodes it with no dependencies, so a TV app does not need a native QR module or an SVG renderer.
 
 ```ts
-import { qrMatrix, qrRuns, qrSvg, qrSvgPath } from 'tv-voice-bridge/qr';
+import { qrMatrix, qrRuns, qrSvg, qrSvgPath } from 'vega-voice-bridge/qr';
 
 const m = qrMatrix(joinUrl);                  // { size, version, ecc: 'M', mask, modules: boolean[][] }, no quiet zone
 const d = qrSvgPath(m, { cell: 8, margin: 4 });   // one SVG path, dark modules merged into horizontal runs
@@ -418,7 +427,7 @@ npm install              # dev dependencies only; also builds dist/ (prepare)
 npm run typecheck        # tsc --noEmit over src/ and test/
 npm test                 # vitest, no build needed (tests import src/)
 npm run example          # the whole loop in one process, with the hop timeline
-npm run hub -- --echo    # a standalone hub (the tv-voice-bridge-hub bin)
+npm run hub -- --echo    # a standalone hub (the vega-voice-bridge-hub bin)
 npm run build            # cleans, then tsc -> dist/ (ESM + .d.ts + source maps)
 npm pack --dry-run       # dist/, src/, the phone page, README.md, PROTOCOL.md, CHANGELOG.md, LICENSE (no tests)
 ```
