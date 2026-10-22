@@ -1,12 +1,6 @@
 # Changelog
 
-## Unreleased
-
-### Docs
-- **The Vega app sends an `Origin`.** On the Vega Virtual Device its WebSocket upgrade carries `Origin: http://127.0.0.1:8790`, the address it dialled. The docs and the 0.4.1 notes said it sends none. The hub's check admits it as the address the hub was reached at, so no behaviour changes. What a Fire TV Stick sends is not checked yet.
-- **The Vega Virtual Device numbers come from a 20-line run.** The README's VVD column, the voice loop guide and `docs/vega-notes.md` give p50 / p95 over 20 scripted lines (`scripts/bench.mjs` over the hub's log) instead of ranges over 4. Speech end → reply audible: 166 / 303 ms, 20 of 20 replies played to the end.
-
-## 0.4.1 (2026-10-21)
+## 0.4.1 (2026-10-22)
 
 The wire protocol is unchanged (v1, revision 3), and 0.4.0 clients and hubs work with 0.4.1 ones both ways. One hub behaviour changed for existing users: one rate key's wrong codes now count inside the hub-wide window (the first item under "Fixed"), so it takes about 10 addresses to pause pairing, as documented, not about 6.
 
@@ -16,7 +10,7 @@ The wire protocol is unchanged (v1, revision 3), and 0.4.0 clients and hubs work
 ### Fixed
 - **Hub: one rate key counts for at most a tenth of each hub-wide wrong-code window, as documented.** Its share was a window of its own, which began at its first miss and so did not line up with the hub-wide one: a key's misses on both sides of a hub-wide window's end could count for up to twice its share less one in a single window (19 of the default 100), so about 6 addresses could pause pairing instead of 10. The share is now counted inside the hub-wide window.
 - **`examples/vega-voice-loop`, `RESPOND_CMD`:** a reply whose UTF-8 character arrived split across two writes (a command that streams its answer) reached the TV as two `�` in its place; stdout and stderr are now decoded once, whole. The `maxBytes` cap on stdout counts bytes, as its name says, not UTF-16 units.
-- **`examples/vega-voice-loop`: the hub checks `Origin`, as the CLI does.** It had no check, while `docs/https.md` runs it through a tunnel and described the CLI's: a page on another site, opened on the same Wi-Fi, could open sockets to it, and with a room's code send finals, each one an agent call. Now the pages it served, the `--public-url` page and clients that send no `Origin` (the Vega app) connect; other pages get 403, logged once each as `origin-refused`, and the `ready` line names the policy. `--any-origin` (`anyOrigin`) turns the check off.
+- **`examples/vega-voice-loop`: the hub checks `Origin`, as the CLI does.** It had no check, while `docs/https.md` runs it through a tunnel and described the CLI's: a page on another site, opened on the same Wi-Fi, could open sockets to it, and with a room's code send finals, each one an agent call. Now the pages it served (an `Origin` equal to the address the hub was reached at, which is also what the Vega app sends), the `--public-url` page and clients that send no `Origin` (Node, for one) connect; other pages get 403, logged once each as `origin-refused`, and the `ready` line names the policy. `--any-origin` (`anyOrigin`) turns the check off.
 - **`examples/vega-voice-loop/vega`: `npm run hub` no longer writes a tracked file.** It wrote the hub's address into `src/hub.json`, which git tracks, and the stick run's fallback puts the dev machine's LAN address there with no step to undo it, so a later commit of everything would have published that address. It now writes `src/hub.local.json`, which git ignores and the app reads before the tracked `src/hub.json` (still `127.0.0.1:8790`). The stick run's guide ends by removing it, and git also ignores the run's `bench-*.json` and `clip.mp4` in the repo root.
 - **`./phone`:** one copy of a comment that the `voiceSupport()` change left twice on one line, in `src/` and in `dist/`.
 
@@ -25,6 +19,8 @@ The wire protocol is unchanged (v1, revision 3), and 0.4.0 clients and hubs work
 - **The CLI hub's command:** `npm run hub -- <options>` in a clone, and `npx --no-install tv-voice-bridge-hub` in an app that installed the package. The docs gave npx the bin's name alone, which asks npm for a package with that name. There is none, and anyone could register it.
 - **Node 20:** the client needs `WebSocketImpl` from `ws` there, since Node 20 has no global `WebSocket`.
 - **"Used by"** says how Spee, the speaking coach that uses the bridge, pairs through it (with 0.3.5), and that neither Spee's repository nor Rack Board is public.
+- **The Vega app sends an `Origin`.** On the Vega Virtual Device its WebSocket upgrade carries `Origin: http://127.0.0.1:8790`, the address it dialled. The hub's check admits it as the address the hub was reached at, so no behaviour changes. The docs, the CLI's help and its startup line no longer call TV apps clients with no `Origin`. What a Fire TV Stick sends is not checked yet.
+- **The Vega Virtual Device numbers come from a 20-line run.** The README's VVD column, the voice loop guide and `docs/vega-notes.md` give p50 / p95 over 20 scripted lines (`scripts/bench.mjs` over the hub's log). Speech end → reply audible: 166 / 303 ms, 20 of 20 replies played to the end.
 
 ## 0.4.0 (2026-10-20)
 
