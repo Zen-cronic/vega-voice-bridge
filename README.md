@@ -225,6 +225,8 @@ These numbers are the bridge's own path (phone final → TV → reply audio) wit
 
 <!-- The right-hand column is filled only from bench-phone.json after a measured stick run (scripts/stick-run.md), never by hand. test/docs.test.ts fails if a number appears there before then. -->
 
+**With a model in the loop** (Amazon Bedrock, `us.amazon.nova-lite-v1:0` in us-east-1, one line, headless on one laptop with no device, 2026-10-22, **N=1**): final → reply audio ready on the TV client 1,992 ms, of which the agent command took 1,851 ms (a Node process, the AWS CLI's start-up and one Converse call; the model's own share is not separated) and espeak 122 ms. No speaker, so this stops at the clip being on the TV client, not at sound. Raw timings: [docs/bench/e2e-bedrock-2026-10-22.json](docs/bench/e2e-bedrock-2026-10-22.json).
+
 The scripted phone stamps `speech.end` when it sends the final, so a real phone's recognizer tail comes on top. Text-to-speech (espeak, about 140 ms) runs while the answer is already on screen. The scripted phone repeats four lines, so 14 of the 20 replies reused a clip the hub had already made; the 6 it rendered fresh are the slow end of the audible leg. The answer showed in 8–21 ms on those 6, and took up to 118 ms when a cached clip reached the TV together with the answer. Measured earlier in the first app built on the bridge, on the VVD: phone tap → TV render 6–69 ms over a reverse port forward, and `screen.say` → audio playing from a presigned S3 MP3 166–224 ms. A web TV on the same host is under 40 ms end to end.
 
 ## The round trip
