@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Print one version's section of CHANGELOG.md (the release notes), without its heading.
-//   node scripts/release-notes.mjs 0.4.1
+//   node scripts/release-notes.mjs 0.4.2
 // Exits 1 when CHANGELOG.md has no "## <version>" section.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';

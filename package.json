@@ -1,6 +1,6 @@
 {
   "name": "vega-voice-bridge",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Two-way voice for Fire TV (Vega) apps and AI agents: the phone listens, your agent answers, the TV shows it and says it. Echo guard, barge-in, every hop timed. No phone app.",
   "license": "MIT",
   "author": "Kaung Zin Hein",
@@ -17,8 +17,8 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "vega-voice-bridge-hub": "./dist/cli.js",
-    "tv-voice-bridge-hub": "./dist/cli.js"
+    "vega-voice-bridge-hub": "dist/cli.js",
+    "tv-voice-bridge-hub": "dist/cli.js"
   },
   "exports": {
     ".": {

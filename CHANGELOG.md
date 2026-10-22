@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.2 (2026-10-22)
+
+Renamed to vega-voice-bridge and published to npm. No behaviour or wire change beyond the names below: 0.4.1 and 0.4.2 clients and hubs work together both ways; protocol identifiers and the example apps' ids are unchanged. Old GitHub URLs redirect.
+
+### Changed
+- **The package is `vega-voice-bridge`, on npm:** `npm install vega-voice-bridge`. Imports change with it (`vega-voice-bridge/hub`, `vega-voice-bridge/react` and so on) for new installs; an app that still installs a 0.4.1 tarball or tag keeps importing `tv-voice-bridge`.
+- **The CLI hub's bin is `vega-voice-bridge-hub`.** `tv-voice-bridge-hub` stays as an alias for the same file, so existing scripts keep working.
+- **The repository is `Zen-cronic/vega-voice-bridge`.** The release tarball is `vega-voice-bridge-<version>.tgz`, and the Vega example installs `vega-voice-bridge-0.4.2.tgz`.
+- **Log and error messages begin with `vega-voice-bridge`,** including the CLI's startup line (`vega-voice-bridge hub on ws://…`). Nothing on the wire changed: the phone page's `tv-voice-bridge-path` meta, the `TVB_HUB_URL` variable, and the example app's package name (`tv-voice-bridge-voiceloop`) and ids (`com.tvvoicebridge.loop`) keep their names.
+
 ## 0.4.1 (2026-10-22)
 
 The wire protocol is unchanged (v1, revision 3), and 0.4.0 clients and hubs work with 0.4.1 ones both ways. One hub behaviour changed for existing users: one rate key's wrong codes now count inside the hub-wide window (the first item under "Fixed"), so it takes about 10 addresses to pause pairing, as documented, not about 6.

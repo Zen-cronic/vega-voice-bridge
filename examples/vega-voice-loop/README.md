@@ -13,14 +13,14 @@ Needs the Vega SDK, `ffmpeg`, and `espeak` (Linux) or `say` (macOS); or the AWS 
 
 ```bash
 # 1. the package, as a tarball the app installs
-npm install && npm pack                                   # -> vega-voice-bridge-0.4.1.tgz at the repo root
+npm install && npm pack                                   # -> vega-voice-bridge-0.4.2.tgz at the repo root
 
 # 2. the hub (port 8790): bridge + stub agent + text-to-speech
 node examples/vega-voice-loop/hub.mjs
 
 # 3. the TV app
 cd examples/vega-voice-loop/vega
-npm install && npm install ../../../vega-voice-bridge-0.4.1.tgz   # the second install refreshes the bridge after a new pack
+npm install && npm install ../../../vega-voice-bridge-0.4.2.tgz   # the second install refreshes the bridge after a new pack
 npm run hub -- 127.0.0.1:8790 && npm run build                 # build/<arch>-release/vega-voice-bridge-voiceloop_<arch>.vpkg
 vega virtual-device start
 vega device start-port-forwarding -d VirtualDevice --port 8790 --forward false   # the VVD reaches the hub at 127.0.0.1

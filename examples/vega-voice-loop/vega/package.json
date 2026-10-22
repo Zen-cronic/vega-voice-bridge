@@ -12,7 +12,7 @@
     "@amazon-devices/react-native-w3cmedia": "~2.3.2",
     "react": "19.2.0",
     "react-native": "0.83.0",
-    "vega-voice-bridge": "file:../../../vega-voice-bridge-0.4.1.tgz"
+    "vega-voice-bridge": "file:../../../vega-voice-bridge-0.4.2.tgz"
   },
   "devDependencies": {
     "@amazon-devices/kepler-cli-platform": "^0",

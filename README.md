@@ -31,7 +31,7 @@ The phone's own recognizer turns speech into text. Your `onFinal` handler, wheth
 | `…/qr` | A dependency-free QR Code encoder for the pairing screen |
 | [PROTOCOL.md](PROTOCOL.md) | The wire protocol (v1), for a second implementation on another platform |
 
-Version **0.4.1**, protocol v1 revision 3 ([CHANGELOG.md](CHANGELOG.md)). On npm as `vega-voice-bridge` from 0.4.2: `npm install vega-voice-bridge` ([install](#install)).
+Version **0.4.2**, protocol v1 revision 3 ([CHANGELOG.md](CHANGELOG.md)). On npm as `vega-voice-bridge` from 0.4.2: `npm install vega-voice-bridge` ([install](#install)).
 
 ## The whole loop in one command
 
@@ -121,14 +121,14 @@ npm install vega-voice-bridge     # from npm, from 0.4.2
 Or from a GitHub tag, which builds dist/ on install (the prepare script):
 
 ```bash
-npm install github:Zen-cronic/vega-voice-bridge#v0.4.1   # a release tag
+npm install github:Zen-cronic/vega-voice-bridge#v0.4.2   # a release tag
 ```
 
 Each [GitHub release](https://github.com/Zen-cronic/vega-voice-bridge/releases) also carries the packed tarball. Or pack it yourself:
 
 ```bash
 npm pack --pack-destination ../my-app/vendor     # in this repo; builds first
-cd ../my-app && npm install ./vendor/vega-voice-bridge-0.4.1.tgz
+cd ../my-app && npm install ./vendor/vega-voice-bridge-0.4.2.tgz
 ```
 
 Until 0.4.1 the package was called `tv-voice-bridge` and was not on npm; links to the old repository redirect here, and the wire protocol did not change with the name.
