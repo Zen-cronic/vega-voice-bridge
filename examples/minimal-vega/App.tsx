@@ -7,7 +7,7 @@
  *
  * Vega specifics this shows:
  *  - Vega has no app-level speech-to-text API, so the phone listens and the TV is a `screen` peer.
- *  - React Native's global WebSocket works; use a reverse port forward on the VVD (see README, "Vega notes").
+ *  - React Native's global WebSocket works; use a reverse port forward on the VVD (see docs/api.md, "Vega notes").
  *  - `createVegaSayPlayer` plays https in URL mode, or fragmented MP4/AAC from a plain-http hub through MSE,
  *    and reports every playback state, so the hook can queue lines and the phone's echo guard knows when the
  *    TV is audible.

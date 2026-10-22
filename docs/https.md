@@ -77,4 +77,4 @@ Android Chrome and user-installed certificate authorities: not verified here; us
 
 ## 4. No phone: localhost
 
-On the computer running the hub, open `http://localhost:8790/p/<code>` in Chrome or Safari (the code the TV shows). `localhost` counts as secure, so the mic works in a desktop tab, which is enough to try the loop. Desktop Chrome sends the audio to Google's speech service; see "Where speech is recognized" in the [README](../README.md#where-speech-is-recognized).
+On the computer running the hub, open `http://localhost:8790/p/<code>` in Chrome or Safari (the code the TV shows). `localhost` counts as secure, so the mic works in a desktop tab, which is enough to try the loop. Desktop Chrome sends the audio to Google's speech service; see "Where speech is recognized" in the [README](design.md#where-speech-is-recognized).

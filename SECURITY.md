@@ -10,7 +10,7 @@ Please use GitHub's private vulnerability reporting on this repository (**Securi
 
 - **The hub** is trusted: it sees every transcript and every reply. It runs no model and stores nothing. What your `onFinal` does with transcripts is your app's privacy surface.
 - **The pairing code is the room's only credential.** It is 4 characters from a 31-character alphabet: 923,521 codes, drawn with the platform CSPRNG and never equal to a live room's.
-- **The phone never sends audio to the hub,** only text. Its browser recognizes the speech (see "Where speech is recognized" in the [README](README.md#where-speech-is-recognized)).
+- **The phone never sends audio to the hub,** only text. Its browser recognizes the speech (see "Where speech is recognized" in the [README](docs/design.md#where-speech-is-recognized)).
 
 ## Threats, and what covers them
 

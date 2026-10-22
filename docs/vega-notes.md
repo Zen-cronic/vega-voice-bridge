@@ -10,7 +10,7 @@ What we ran into building a voice loop on Fire TV's Vega OS, and what the bridge
   - **The bridge:** the phone listens. Its browser recognizes the speech and sends text.
 - **No app-level text-to-speech.** VoiceView is the only platform speech output, and `speechSynthesis` is not available ([forum 24875](https://community.amazondeveloper.com/t/tts-implementation/24875)).
   - **The bridge:** the hub makes the audio (`examples/vega-voice-loop/tts.mjs`: macOS `say`, Linux `espeak`, any command, or Amazon Polly) and sends it as a `screen.say` line; the TV plays it with `./vega`.
-- **Alexa reaches an app as structured requests,** not words: Content Launcher, media controls and UI-controller selection ([KB 4341](https://community.amazondeveloper.com/t/migrating-catalog-and-voice-integration-from-fire-os-to-vega/4341), [forum 27800](https://community.amazondeveloper.com/t/is-it-posible-to-create-custom-voice-commands-on-vega/27800)). See "Why not Alexa" in the [README](../README.md#why-not).
+- **Alexa reaches an app as structured requests,** not words: Content Launcher, media controls and UI-controller selection ([KB 4341](https://community.amazondeveloper.com/t/migrating-catalog-and-voice-integration-from-fire-os-to-vega/4341), [forum 27800](https://community.amazondeveloper.com/t/is-it-posible-to-create-custom-voice-commands-on-vega/27800)). See "Why not Alexa" in the [README](design.md#why-not).
 
 ## Audio playback (`@amazon-devices/react-native-w3cmedia`)
 
