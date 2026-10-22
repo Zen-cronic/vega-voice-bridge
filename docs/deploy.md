@@ -5,8 +5,8 @@ The hub is one Node process with one dependency (`ws`). It keeps its rooms in me
 ## A laptop or a box on the LAN
 
 ```bash
-npx tv-voice-bridge-hub --port 8790          # from an app that has this package installed
-npm run hub -- --echo                        # in this repo: --echo answers each final with "You said: ..."
+npm run hub -- --port 8790 --echo                # in a clone of this repo: --echo answers each final with "You said: ..."
+npx --no-install tv-voice-bridge-hub --port 8790  # in an app that installed the package; never installs from npm
 ```
 
 It prints the WebSocket URL and the join URL built from this machine's LAN address, and serves:

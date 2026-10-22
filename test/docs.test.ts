@@ -87,6 +87,10 @@ describe('docs', () => {
     expect(lines.slice(0, 15).some((l) => l.startsWith('!['))).toBe(true);
   });
 
+  it('no doc tells npx to fetch the hub from npm: a bare `npx tv-voice-bridge-hub` looks for a package of that name', () => {
+    for (const file of files) expect(read(file), file).not.toMatch(/npx\s+(?!--no-install\b)[^\n`]*\btv-voice-bridge/);
+  });
+
   it('the public docs carry no internal plan labels', () => {
     for (const file of files) expect(read(file), file).not.toMatch(/\bR\d{1,2}\b|PLACEHOLDER/);
   });

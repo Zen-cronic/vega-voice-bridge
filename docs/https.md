@@ -33,7 +33,9 @@ A tunnel gives the hub a public `https://` address. You start it yourself; it pu
 2. Tell the hub, so the TV's QR carries the https link:
 
    ```bash
-   npx tv-voice-bridge-hub --port 8790 --public-url https://<tunnel host> --trust-proxy
+   npm run hub -- --port 8790 --public-url https://<tunnel host> --trust-proxy
+   # the same from an app that installed the package:
+   npx --no-install tv-voice-bridge-hub --port 8790 --public-url https://<tunnel host> --trust-proxy
    # or the Vega voice loop example:
    node examples/vega-voice-loop/hub.mjs --port 8790 --public-url https://<tunnel host>
    ```

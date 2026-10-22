@@ -282,7 +282,7 @@ const hub = new BridgeHub({
 
 The hub is defensive by construction. No frame, upgrade request or app callback can throw out of it. Every field of every message is validated, and anything bad gets a typed error instead of a crash. A handler that throws gives the room `handler-failed` with the generic message "handler failed"; the exception text goes to the hub's log.
 
-The CLI is the same hub with a phone page: `npx tv-voice-bridge-hub --port 8790` (or `npm run hub -- --echo` here) prints the WebSocket URL and the join URL built from this machine's LAN address. [docs/deploy.md](docs/deploy.md) has the rest: every hub option and limit, containers, reverse proxies and tunnels (`--trust-proxy` and `X-Forwarded-For`), the Origin check, serving the phone page from your own server, and what `hub.stats` and the log report.
+The CLI is the same hub with a phone page. In a clone of this repo, run `npm run hub -- --port 8790` (add `--echo` to answer each final with "You said: …"). In an app that installed the package, run `npx --no-install tv-voice-bridge-hub --port 8790`. The command is this package's bin, and `--no-install` stops npx from downloading some other npm package that happens to have that name. Either way, it prints the WebSocket URL and the join URL built from this machine's LAN address. [docs/deploy.md](docs/deploy.md) has the rest: every hub option and limit, containers, reverse proxies and tunnels (`--trust-proxy` and `X-Forwarded-For`), the Origin check, serving the phone page from your own server, and what `hub.stats` and the log report.
 
 ## Phone (`./phone`)
 
