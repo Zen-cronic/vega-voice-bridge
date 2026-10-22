@@ -32,7 +32,7 @@ const HELP = `Usage: tv-voice-bridge-hub [options]
                       proxy in the chain with --proxy (a CDN's ranges too): only those entries are passed over
   --origin <origin>   Also accept WebSockets from web pages on this origin, e.g. https://app.example (repeatable).
                       By default only pages this hub served (its own address, --public-url and --join-url) and
-                      clients that send no Origin (TV apps, Node) may connect; other sites' pages get 403
+                      clients that send no Origin (Node, for one) may connect; other sites' pages get 403
   --any-origin        Accept WebSockets from any web page (no Origin check)
   --quiet             Do not log joins and leaves
   -h, --help          Show this help
@@ -190,7 +190,7 @@ export async function startHubCli(o: HubCliOptions, log: (line: string) => void 
   log(
     o.anyOrigin
       ? 'origin check off (--any-origin): web pages on any site may connect'
-      : `origin check: web pages this hub served${extraOrigins.length ? `, and ${extraOrigins.join(', ')}` : ''}; clients without an Origin (TV apps) always connect`,
+      : `origin check: web pages this hub served${extraOrigins.length ? `, and ${extraOrigins.join(', ')}` : ''}; clients without an Origin always connect`,
   );
   if (o.trustProxy && (o.proxyHops ?? 1) > 1 && (o.proxies ?? []).length === 0)
     log(

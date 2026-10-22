@@ -299,7 +299,7 @@ describe('tv-voice-bridge-hub (CLI)', () => {
       expect(await opened(app.port, 'https://evil.example')).toBe(403);
       expect(await opened(app.port, 'https://evil.example')).toBe(403);
       expect(lines.filter((l) => l.startsWith('refused a WebSocket from a page on https://evil.example'))).toHaveLength(1); // once per origin
-      expect(lines).toContain('origin check: web pages this hub served, and https://tv.example, https://app.example; clients without an Origin (TV apps) always connect');
+      expect(lines).toContain('origin check: web pages this hub served, and https://tv.example, https://app.example; clients without an Origin always connect');
     } finally {
       await app.close();
     }
