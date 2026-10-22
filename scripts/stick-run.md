@@ -49,7 +49,7 @@ vega device is-app-running -d $D --appName com.tvvoicebridge.loop.main
 
 The TV shows VOICE LOOP, a QR and a 4-character code, and the hub prints `{"event":"join",...,"role":"screen",...}`. If the TV shows nothing, `vega device launch-app -d $D --appName com.tvvoicebridge.loop.main`. If the reverse forward does not work over Wi-Fi, rebuild with `npm run hub -- <dev machine LAN IP>:8790` (step 1) and skip the forward. The address goes into `src/hub.local.json`, which git ignores; the tracked `src/hub.json` keeps `127.0.0.1:8790`.
 
-**Check: the `Origin` the Vega app sends.** Copy the `origin` field of the screen's join line into the results (`null` means no `Origin` header). The hub checks `Origin` as the CLI does and admits a client that sends none. If the TV never pairs and the hub prints `{"event":"origin-refused","origin":...}` instead of a join, copy that `origin` into the results and restart the hub with `--any-origin` for the rest of the run.
+**Check: the `Origin` the Vega app sends.** Copy the `origin` field of the screen's join line into the results (`null` means no `Origin` header). On the Virtual Device it was `http://127.0.0.1:8790`, the address the app dialled. The hub checks `Origin` as the CLI does: it admits no `Origin`, or the address the app reached it at when that is an IP address, `localhost` or a `.local` name. If the TV never pairs and the hub prints `{"event":"origin-refused","origin":...}` instead of a join, copy that `origin` into the results and restart the hub with `--any-origin` for the rest of the run.
 
 ## 4. Run A: scripted phone, N=20
 

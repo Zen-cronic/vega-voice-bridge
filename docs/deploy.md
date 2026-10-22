@@ -39,7 +39,7 @@ Pass `--public-url https://your.host` (or a whole `--join-url 'https://app.examp
 
 In your own code, `rateKey: forwardedClientKey({ proxies, hops })` from `tv-voice-bridge/hub` does the same, checking the proxy list once when it is built; `forwardedClient(req, { proxies, hops })` is the one-off form.
 
-**Origin check.** The CLI accepts WebSockets only from pages it served itself (its own address, `--public-url`, `--join-url`) and from clients that send no `Origin` header (TV apps, Node). A page on another site gets HTTP 403, and the hub prints each refused origin once. `--origin https://app.example` adds a site; `--any-origin` turns the check off. In your own code it is `allowedOrigins` (below).
+**Origin check.** The CLI accepts WebSockets only from pages it served itself (its own address, `--public-url`, `--join-url`) and from clients that send no `Origin` header (Node, curl). "Served itself" means the `Origin` is the address the client reached the hub at, when that is an IP address, `localhost` or a `.local` name. The Vega app on the Vega Virtual Device sends the address it dialled (`http://127.0.0.1:8790`), so it passes that way; what it sends on a Fire TV Stick is not checked yet. A page on another site gets HTTP 403, and the hub prints each refused origin once. `--origin https://app.example` adds a site; `--any-origin` turns the check off. In your own code it is `allowedOrigins` (below).
 
 ## Your own server: `BridgeHub` next to your app
 

@@ -629,7 +629,7 @@ describe('allowedOrigins: which web pages may connect', () => {
     expect(await upgradeWith(url, 'https://app.example')).toBe('open');
     expect(await upgradeWith(url, 'HTTPS://APP.EXAMPLE')).toBe('open'); // compared as browsers serialize it
     expect(await upgradeWith(url, 'http://192.168.1.20:8790')).toBe('open');
-    expect(await upgradeWith(url)).toBe('open'); // a native TV app, Node, curl
+    expect(await upgradeWith(url)).toBe('open'); // Node, curl
     for (const bad of ['https://evil.example', 'https://app.example.evil.example', 'http://app.example', 'null', 'not an origin', 'http://192.168.1.20:8791'])
       expect(await upgradeWith(url, bad), bad).toBe(403);
     expect(hub.stats.originRefused).toBe(6);

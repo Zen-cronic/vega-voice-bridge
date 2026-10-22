@@ -123,9 +123,9 @@ export interface HubOptions {
   /**
    * Which web pages may open a WebSocket to this hub, checked on every upgrade before the handshake: the defence
    * against cross-site WebSocket hijacking (a page on another site, opened on a phone or laptop on your Wi-Fi,
-   * talking to the hub as if it were yours). A refused upgrade gets HTTP 403. An upgrade with no `Origin` header (a
-   * native TV app, Node, curl) always passes: Origin only constrains browsers, since any other client can write
-   * whatever it likes (RFC 6455, section 10.2).
+   * talking to the hub as if it were yours). A refused upgrade gets HTTP 403. An upgrade with no `Origin` header
+   * (Node, curl) always passes: Origin only constrains browsers, since any other client can write whatever it likes
+   * (RFC 6455, section 10.2).
    * - A list: origins as browsers write them (`https://app.example`, `http://192.168.1.20:8790`), compared exactly
    *   after lower-casing. An entry that is not an http(s) origin throws here. `null` never matches.
    * - A function `(origin, req) => boolean`, for anything else. `localOriginPolicy(extra)` is the CLI's policy: the
@@ -287,7 +287,8 @@ function unrebindable(hostname: string): boolean {
  * The CLI's Origin policy, for `allowedOrigins`: pages this hub served itself, plus `extra` origins (a public URL
  * or a join page on another site). "Served itself" means the Origin is the request's own Host, when that Host is
  * an address, `localhost` or a `.local` name: a page on a public DNS name could be a DNS-rebinding page whose name
- * now points at this hub, so a public name has to be listed in `extra`.
+ * now points at this hub, so a public name has to be listed in `extra`. The Vega app on the Vega Virtual Device sends
+ * the address it dialled (`http://127.0.0.1:8790` for `ws://127.0.0.1:8790/ws`), which this admits.
  */
 export function localOriginPolicy(extra: string[] = []): (origin: string, req: IncomingMessage) => boolean {
   const listed = originSet(extra);

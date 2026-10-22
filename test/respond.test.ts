@@ -212,8 +212,8 @@ describe("the voice loop hub's Origin check, the CLI's", () => {
     const events: Array<Record<string, unknown>> = [];
     const loop = await startVoiceLoop({ port: 0, host: '127.0.0.1', publicUrl: 'https://tv.example/', responder: createResponder({ env: {} }), tts, log: (e: Record<string, unknown>) => events.push(e) });
     open.push(() => loop.close());
-    expect(await opened(loop.port)).toBe('open'); // the Vega app, the scripted phone: no Origin
-    expect(await opened(loop.port, `http://127.0.0.1:${loop.port}`)).toBe('open'); // the phone page this hub served
+    expect(await opened(loop.port)).toBe('open'); // the scripted phone, Node: no Origin
+    expect(await opened(loop.port, `http://127.0.0.1:${loop.port}`)).toBe('open'); // the phone page this hub served, and the Vega app on the Virtual Device (the address it dialled)
     expect(await opened(loop.port, 'https://tv.example')).toBe('open'); // the same page through the tunnel
     expect(await opened(loop.port, 'https://evil.example')).toBe(403);
     expect(await opened(loop.port, 'https://evil.example')).toBe(403);

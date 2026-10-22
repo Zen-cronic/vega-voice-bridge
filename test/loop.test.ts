@@ -292,7 +292,7 @@ describe('tv-voice-bridge-hub (CLI)', () => {
     const lines: string[] = [];
     const app = await startHubCli({ ...(parseHubArgs(['--port', '0', '--host', '127.0.0.1', '--public-url', 'https://tv.example', '--origin', 'https://app.example']) as Exclude<ReturnType<typeof parseHubArgs>, 'help'>) }, (l) => lines.push(l));
     try {
-      expect(await opened(app.port)).toBe('open'); // a TV app or Node: no Origin
+      expect(await opened(app.port)).toBe('open'); // Node: no Origin
       expect(await opened(app.port, `http://127.0.0.1:${app.port}`)).toBe('open'); // the phone page this hub served
       expect(await opened(app.port, 'https://tv.example')).toBe('open'); // --public-url
       expect(await opened(app.port, 'https://app.example')).toBe('open'); // --origin

@@ -5,8 +5,10 @@
 // The Vega app reaches it at 127.0.0.1:<port> on the Virtual Device (after a reverse port forward) or at the
 // LAN address on a Fire TV Stick. Replies are fragmented MP4/AAC clips served from this hub over plain http.
 // The pairing QR opens the phone page on this hub, at this machine's LAN address unless --public-url says otherwise.
-// WebSockets are checked for Origin as the CLI checks them: pages this hub served and the --public-url page, plus
-// clients that send no Origin (the Vega app). A page on another site gets 403; --any-origin turns the check off.
+// WebSockets are checked for Origin as the CLI checks them: no Origin (Node), an Origin that is the address the
+// client reached this hub at (an IP address, localhost or a .local name), or the --public-url origin. The Vega app
+// on the Virtual Device sends http://127.0.0.1:8790, the address it dials, so it passes; on a Fire TV Stick it is
+// not checked yet. A page on another site gets 403; --any-origin turns the check off.
 import { createServer } from 'node:http';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
@@ -48,8 +50,8 @@ export async function startVoiceLoop({ port = 8790, host, publicUrl, anyOrigin =
     path: '/ws',
     joinUrl: (code) => `${base}/p/${code}`,
     allowedOrigins: anyOrigin ? undefined : localOriginPolicy(ownOrigins),
-    // Each join, with the Origin header the peer connected with (none from a native TV app), and each refused
-    // Origin once.
+    // Each join, with the Origin header the peer connected with (null if it sent none; the Vega app on the Virtual
+    // Device sends http://127.0.0.1:8790), and each refused Origin once.
     log: (event, data) => {
       if (event === 'join') log({ event: 'join', code: data?.code, role: data?.role, origin: data?.origin ?? null });
       else if (event === 'handler-failed') log({ event: 'handler-failed', error: data?.error });

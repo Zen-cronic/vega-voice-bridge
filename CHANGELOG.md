@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Docs
+- **The Vega app sends an `Origin`.** On the Vega Virtual Device its WebSocket upgrade carries `Origin: http://127.0.0.1:8790`, the address it dialled. The docs and the 0.4.1 notes said it sends none. The hub's check admits it as the address the hub was reached at, so no behaviour changes. What a Fire TV Stick sends is not checked yet.
 - **The Vega Virtual Device numbers come from a 20-line run.** The README's VVD column, the voice loop guide and `docs/vega-notes.md` give p50 / p95 over 20 scripted lines (`scripts/bench.mjs` over the hub's log) instead of ranges over 4. Speech end → reply audible: 166 / 303 ms, 20 of 20 replies played to the end.
 
 ## 0.4.1 (2026-10-21)
