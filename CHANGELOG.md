@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Docs
+- **The Vega Virtual Device numbers come from a 20-line run.** The README's VVD column, the voice loop guide and `docs/vega-notes.md` give p50 / p95 over 20 scripted lines (`scripts/bench.mjs` over the hub's log) instead of ranges over 4. Speech end → reply audible: 166 / 303 ms, 20 of 20 replies played to the end.
+
 ## 0.4.1 (2026-10-21)
 
 The wire protocol is unchanged (v1, revision 3), and 0.4.0 clients and hubs work with 0.4.1 ones both ways. One hub behaviour changed for existing users: one rate key's wrong codes now count inside the hub-wide window (the first item under "Fixed"), so it takes about 10 addresses to pause pairing, as documented, not about 6.

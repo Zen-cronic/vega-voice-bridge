@@ -75,4 +75,4 @@ All in hub clock, per utterance:
 
 The hub prints each loop as a JSON line, `{"event":"loop","said":...,"shownMs":...,"agentMs":...,"ttsMs":...,"sayToPlayingMs":...,"heardMs":...,"replyMs":...,"state":...}`, and each join with the `Origin` header the peer connected with (`null` for the Vega app and other native clients).
 
-The scripted phone stamps `speech.end` when it sends the final, so a real phone adds its recognizer's tail. Measured on the Vega Virtual Device (SDK 0.24), 4 utterances: shown 11–46 ms, say → playing 72–175 ms, speech end → heard 217–322 ms.
+The scripted phone stamps `speech.end` when it sends the final, so a real phone adds its recognizer's tail. Measured on the Vega Virtual Device (SDK 0.24) with the scripted phone, N=20, p50 / p95: shown 83 / 114 ms, say → playing 154 / 182 ms, speech end → heard 166 / 303 ms. 20 of 20 replies played to the end.

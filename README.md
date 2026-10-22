@@ -214,16 +214,16 @@ const tv = useVoiceBridge({
 
 [`examples/vega-voice-loop`](examples/vega-voice-loop) is the whole loop as a Vega app: the pairing QR, the phone's words as they arrive, the answer, the answer said out loud, and the hub's measurements of each loop, shown on the TV. The screenshot at the top of this page is that app.
 
-| Leg (hub clock) | Vega Virtual Device (SDK 0.24), scripted phone, 4 utterances | Fire TV Stick, real phone |
+| Leg (hub clock) | Vega Virtual Device (SDK 0.24), scripted phone, N=20, p50 / p95 | Fire TV Stick, real phone |
 |---|---|---|
-| speech end → answer on screen | 11–46 ms | *not measured yet* |
-| `screen.say` → audio playing | 72–175 ms | *not measured yet* |
-| **speech end → reply audible** | **217–322 ms** | *not measured yet* |
-| replies played to the end | 4 of 4 | *not measured yet* |
+| speech end → answer on screen | 83 / 114 ms | *not measured yet* |
+| `screen.say` → audio playing | 154 / 182 ms | *not measured yet* |
+| **speech end → reply audible** | **166 / 303 ms** | *not measured yet* |
+| replies played to the end | 20 of 20 | *not measured yet* |
 
 <!-- The right-hand column is filled only from bench-phone.json after a measured stick run (scripts/stick-run.md), never by hand. test/docs.test.ts fails if a number appears there before then. -->
 
-The scripted phone stamps `speech.end` when it sends the final, so a real phone's recognizer tail comes on top. Text-to-speech (espeak, about 140 ms) runs while the answer is already on screen. Measured earlier in the first app built on the bridge, on the VVD: phone tap → TV render 6–69 ms over a reverse port forward, and `screen.say` → audio playing from a presigned S3 MP3 166–224 ms. A web TV on the same host is under 40 ms end to end.
+The scripted phone stamps `speech.end` when it sends the final, so a real phone's recognizer tail comes on top. Text-to-speech (espeak, about 140 ms) runs while the answer is already on screen. The scripted phone repeats four lines, so 14 of the 20 replies reused a clip the hub had already made; the 6 it rendered fresh are the slow end of the audible leg. The answer showed in 8–21 ms on those 6, and took up to 118 ms when a cached clip reached the TV together with the answer. Measured earlier in the first app built on the bridge, on the VVD: phone tap → TV render 6–69 ms over a reverse port forward, and `screen.say` → audio playing from a presigned S3 MP3 166–224 ms. A web TV on the same host is under 40 ms end to end.
 
 ## The round trip
 
