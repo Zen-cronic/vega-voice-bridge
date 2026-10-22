@@ -15,6 +15,7 @@ The wire protocol is unchanged (v1, revision 3), and 0.4.0 clients and hubs work
 - **`./phone`:** one copy of a comment that the `voiceSupport()` change left twice on one line, in `src/` and in `dist/`.
 
 ### Docs
+- **One loop with a model in it, measured.** A line under the README's numbers and `docs/bench/e2e-bedrock-2026-10-22.json`: Amazon Bedrock (Nova Lite) through `agents/bedrock.mjs`, one line, headless with no device, N=1. Final → reply audio ready on the TV client took 1,992 ms, 1,851 ms of it the agent command.
 - **The README opens with the voice loop screenshot from the Vega Virtual Device,** and a line saying where its numbers come from. The Fire TV Stick column says "not measured yet", and `test/docs.test.ts` fails if a number appears there before a measured run (`scripts/stick-run.md`).
 - **The CLI hub's command:** `npm run hub -- <options>` in a clone, and `npx --no-install tv-voice-bridge-hub` in an app that installed the package. The docs gave npx the bin's name alone, which asks npm for a package with that name. There is none, and anyone could register it.
 - **Node 20:** the client needs `WebSocketImpl` from `ws` there, since Node 20 has no global `WebSocket`.
