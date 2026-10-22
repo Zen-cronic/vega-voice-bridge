@@ -19,11 +19,11 @@ Produces `stick-scripted.log`, `stick-phone.log`, `stick-checks.log`, `bench-scr
 ## 1. Build the TV app with this version
 
 ```bash
-npm ci && npm pack                                   # tv-voice-bridge-0.4.1.tgz at the repo root
+npm ci && npm pack                                   # vega-voice-bridge-0.4.1.tgz at the repo root
 cd examples/vega-voice-loop/vega
-npm install && npm install ../../../tv-voice-bridge-0.4.1.tgz   # refreshes a stale bridge in node_modules
+npm install && npm install ../../../vega-voice-bridge-0.4.1.tgz   # refreshes a stale bridge in node_modules
 npm run hub -- 127.0.0.1:8790                        # the app dials the hub through the reverse forward (src/hub.local.json)
-npm run build                                        # build/armv7-release/tv-voice-bridge-voiceloop_armv7.vpkg
+npm run build                                        # build/armv7-release/vega-voice-bridge-voiceloop_armv7.vpkg
 cd ../../..
 ```
 
@@ -43,7 +43,7 @@ vega device info -d $D                               # architecture: armv7l (use
 node examples/vega-voice-loop/hub.mjs --port 8790 | tee stick-scripted.log       # terminal A
 vega device start-port-forwarding -d $D --port 8790 --forward false             # terminal B
 vega device terminate-app -d $D --appName com.tvvoicebridge.loop.main           # run-app does not restart a running app
-vega run-app examples/vega-voice-loop/vega/build/armv7-release/tv-voice-bridge-voiceloop_armv7.vpkg com.tvvoicebridge.loop.main -d $D
+vega run-app examples/vega-voice-loop/vega/build/armv7-release/vega-voice-bridge-voiceloop_armv7.vpkg com.tvvoicebridge.loop.main -d $D
 vega device is-app-running -d $D --appName com.tvvoicebridge.loop.main
 ```
 
@@ -107,7 +107,7 @@ RESPOND_CMD='printf "%s" "This is a long answer, so that you have time to talk o
    ```bash
    (cd examples/vega-voice-loop/vega && npm run hub -- 127.0.0.1:8790 --http-url-mode && npm run build)
    vega device terminate-app -d $D --appName com.tvvoicebridge.loop.main
-   vega run-app examples/vega-voice-loop/vega/build/armv7-release/tv-voice-bridge-voiceloop_armv7.vpkg com.tvvoicebridge.loop.main -d $D
+   vega run-app examples/vega-voice-loop/vega/build/armv7-release/vega-voice-bridge-voiceloop_armv7.vpkg com.tvvoicebridge.loop.main -d $D
    node examples/vega-voice-loop/phone.mjs <CODE> --port 8790 --n 1
    (cd examples/vega-voice-loop/vega && npm run hub -- 127.0.0.1:8790 && npm run build)   # back to the default
    ```

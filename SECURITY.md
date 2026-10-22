@@ -1,6 +1,6 @@
 # Security
 
-tv-voice-bridge pairs a phone with a TV in the same room, the way a living room works: anyone who can see the TV can join it. It is not built to protect anything sensitive. This page says what it defends against, what it does not, and how to report a problem.
+vega-voice-bridge pairs a phone with a TV in the same room, the way a living room works: anyone who can see the TV can join it. It is not built to protect anything sensitive. This page says what it defends against, what it does not, and how to report a problem.
 
 ## Reporting a vulnerability
 

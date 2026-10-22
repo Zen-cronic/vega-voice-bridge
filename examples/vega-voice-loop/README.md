@@ -13,19 +13,19 @@ Needs the Vega SDK, `ffmpeg`, and `espeak` (Linux) or `say` (macOS); or the AWS 
 
 ```bash
 # 1. the package, as a tarball the app installs
-npm install && npm pack                                   # -> tv-voice-bridge-0.4.1.tgz at the repo root
+npm install && npm pack                                   # -> vega-voice-bridge-0.4.1.tgz at the repo root
 
 # 2. the hub (port 8790): bridge + stub agent + text-to-speech
 node examples/vega-voice-loop/hub.mjs
 
 # 3. the TV app
 cd examples/vega-voice-loop/vega
-npm install && npm install ../../../tv-voice-bridge-0.4.1.tgz   # the second install refreshes the bridge after a new pack
-npm run hub -- 127.0.0.1:8790 && npm run build                 # build/<arch>-release/tv-voice-bridge-voiceloop_<arch>.vpkg
+npm install && npm install ../../../vega-voice-bridge-0.4.1.tgz   # the second install refreshes the bridge after a new pack
+npm run hub -- 127.0.0.1:8790 && npm run build                 # build/<arch>-release/vega-voice-bridge-voiceloop_<arch>.vpkg
 vega virtual-device start
 vega device start-port-forwarding -d VirtualDevice --port 8790 --forward false   # the VVD reaches the hub at 127.0.0.1
 vega device terminate-app -d VirtualDevice --appName com.tvvoicebridge.loop.main  # run-app does not restart a running app
-vega run-app build/x86_64-release/tv-voice-bridge-voiceloop_x86_64.vpkg com.tvvoicebridge.loop.main -d VirtualDevice
+vega run-app build/x86_64-release/vega-voice-bridge-voiceloop_x86_64.vpkg com.tvvoicebridge.loop.main -d VirtualDevice
 
 # 4. a phone: the scripted one (the TV shows the code), or a real phone on the same Wi-Fi scanning the TV's QR
 node examples/vega-voice-loop/phone.mjs <CODE>

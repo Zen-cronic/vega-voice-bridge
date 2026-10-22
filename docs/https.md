@@ -35,7 +35,7 @@ A tunnel gives the hub a public `https://` address. You start it yourself; it pu
    ```bash
    npm run hub -- --port 8790 --public-url https://<tunnel host> --trust-proxy
    # the same from an app that installed the package:
-   npx --no-install tv-voice-bridge-hub --port 8790 --public-url https://<tunnel host> --trust-proxy
+   npx --no-install vega-voice-bridge-hub --port 8790 --public-url https://<tunnel host> --trust-proxy
    # or the Vega voice loop example:
    node examples/vega-voice-loop/hub.mjs --port 8790 --public-url https://<tunnel host>
    ```
@@ -57,8 +57,8 @@ For your own iPhone on your own Wi-Fi, with no tunnel. These are mkcert's and Ap
    import { readFileSync } from 'node:fs';
    import { createServer } from 'node:http';
    import { createServer as createHttpsServer } from 'node:https';
-   import { BridgeHub } from 'tv-voice-bridge/hub';
-   import { servePhonePage } from 'tv-voice-bridge/serve';
+   import { BridgeHub } from 'vega-voice-bridge/hub';
+   import { servePhonePage } from 'vega-voice-bridge/serve';
 
    const handler = (req, res) => { if (!servePhonePage(req, res)) res.writeHead(404).end(); };
    const http = createServer(handler).listen(8790);                       // the TV

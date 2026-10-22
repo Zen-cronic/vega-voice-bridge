@@ -6,7 +6,7 @@ The hub is one Node process with one dependency (`ws`). It keeps its rooms in me
 
 ```bash
 npm run hub -- --port 8790 --echo                # in a clone of this repo: --echo answers each final with "You said: ..."
-npx --no-install tv-voice-bridge-hub --port 8790  # in an app that installed the package; never installs from npm
+npx --no-install vega-voice-bridge-hub --port 8790  # in an app that installed the package; never installs from npm
 ```
 
 It prints the WebSocket URL and the join URL built from this machine's LAN address, and serves:
@@ -20,8 +20,8 @@ When `--join-url` points at your own page, add `--no-phone`. For voice on the ph
 ## A container
 
 ```bash
-docker build -t tv-voice-bridge-hub .
-docker run --rm -p 8790:8790 tv-voice-bridge-hub --public-url http://<lan-ip>:8790
+docker build -t vega-voice-bridge-hub .
+docker run --rm -p 8790:8790 vega-voice-bridge-hub --public-url http://<lan-ip>:8790
 ```
 
 Arguments after the image name go to the CLI. Inside a container the hub cannot see the host's LAN address, so pass `--public-url`. The image has a `HEALTHCHECK` on `/healthz`. The Dockerfile's steps were rehearsed outside a container (install, build, pack, install the tarball, start the CLI); the image itself has not been built in this repo.
@@ -37,7 +37,7 @@ Pass `--public-url https://your.host` (or a whole `--join-url 'https://app.examp
 - **Two proxies** (a CDN in front of nginx, each appending): pass `--proxy-hops 2` and name the outer proxy too, with its published ranges (`--proxy 203.0.113.0/24`). The hub passes over an entry only when it is a named proxy, so a client that reaches nginx directly, skipping the CDN, is keyed on the address nginx appended, not on a header it wrote itself. Without the CDN's ranges, every CDN client shares one key: safe but coarse, and the hub warns at startup.
 - **The key is the bare address.** A port the proxy appended (`203.0.113.7:51544`, `[2001:db8::7]:443`) is dropped, and an IPv6 address counts as its /64.
 
-In your own code, `rateKey: forwardedClientKey({ proxies, hops })` from `tv-voice-bridge/hub` does the same, checking the proxy list once when it is built; `forwardedClient(req, { proxies, hops })` is the one-off form.
+In your own code, `rateKey: forwardedClientKey({ proxies, hops })` from `vega-voice-bridge/hub` does the same, checking the proxy list once when it is built; `forwardedClient(req, { proxies, hops })` is the one-off form.
 
 **Origin check.** The CLI accepts WebSockets only from pages it served itself (its own address, `--public-url`, `--join-url`) and from clients that send no `Origin` header (Node, curl). "Served itself" means the `Origin` is the address the client reached the hub at, when that is an IP address, `localhost` or a `.local` name. The Vega app on the Vega Virtual Device sends the address it dialled (`http://127.0.0.1:8790`), so it passes that way; what it sends on a Fire TV Stick is not checked yet. A page on another site gets HTTP 403, and the hub prints each refused origin once. `--origin https://app.example` adds a site; `--any-origin` turns the check off. In your own code it is `allowedOrigins` (below).
 
@@ -45,8 +45,8 @@ In your own code, `rateKey: forwardedClientKey({ proxies, hops })` from `tv-voic
 
 ```ts
 import http from 'node:http';
-import { BridgeHub, forwardedClientKey, localOriginPolicy } from 'tv-voice-bridge/hub';   // needs `ws`
-import { lanAddress, servePhonePage } from 'tv-voice-bridge/serve';
+import { BridgeHub, forwardedClientKey, localOriginPolicy } from 'vega-voice-bridge/hub';   // needs `ws`
+import { lanAddress, servePhonePage } from 'vega-voice-bridge/serve';
 
 const server = http.createServer((req, res) => {
   if (servePhonePage(req, res, { path: '/ws' })) return;     // /p/<code> and /lib/
