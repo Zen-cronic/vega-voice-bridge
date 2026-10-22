@@ -124,7 +124,7 @@ npm pack --pack-destination ../my-app/vendor     # in this repo; builds first
 cd ../my-app && npm install ./vendor/tv-voice-bridge-0.4.0.tgz
 ```
 
-Prefer a tarball for Vega builds: Metro may not follow the symlink that `npm link` or a git checkout makes. The hub needs `ws` (an optional peer dependency); the client needs nothing. `./react` needs `react` 18 or later and a `react-native` your bundler resolves (React Native for Vega, or react-native-web); both are optional peer dependencies that only `./react` imports. `./vega` needs `@amazon-devices/react-native-w3cmedia` (optional too).
+Prefer a tarball for Vega builds: Metro may not follow the symlink that `npm link` or a git checkout makes. The hub needs `ws` (an optional peer dependency). The client needs nothing in a browser, in React Native or on Node 22 and later; Node 20 has no global `WebSocket`, so there pass the one from `ws` as `WebSocketImpl`. `./react` needs `react` 18 or later and a `react-native` your bundler resolves (React Native for Vega, or react-native-web); both are optional peer dependencies that only `./react` imports. `./vega` needs `@amazon-devices/react-native-w3cmedia` (optional too).
 
 ## Quick start: an agent on a web TV (2 minutes)
 
@@ -423,8 +423,8 @@ npm pack --dry-run       # dist/, src/, the phone page, README.md, PROTOCOL.md, 
 
 ## Used by
 
-- **Spee**, a speech coach whose Fire TV app runs on the bridge.
-- The bridge was first extracted from **Rack Board**, a Fire TV training board where the phone logged sets by voice and the TV coached out loud.
+- **Spee**, my speaking coach on Bee. Its Fire TV app joins the bridge as the screen and its phone page as the mic, from a vendored copy of version 0.3.5. Spee's repository is not public, so there is no link.
+- The bridge started inside **Rack Board**, a Fire TV training board I prototyped before Spee, where the phone logs sets by voice and the TV coaches out loud. Rack Board stayed a private prototype.
 
 ## Contributing
 
