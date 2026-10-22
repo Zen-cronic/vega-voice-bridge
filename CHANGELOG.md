@@ -20,7 +20,7 @@ The wire protocol is unchanged (v1, revision 3), and 0.4.0 clients and hubs work
 - **Node 20:** the client needs `WebSocketImpl` from `ws` there, since Node 20 has no global `WebSocket`.
 - **"Used by"** says how Spee, the speaking coach that uses the bridge, pairs through it (with 0.3.5), and that neither Spee's repository nor Rack Board is public.
 - **The Vega app sends an `Origin`.** On the Vega Virtual Device its WebSocket upgrade carries `Origin: http://127.0.0.1:8790`, the address it dialled. The hub's check admits it as the address the hub was reached at, so no behaviour changes. The docs, the CLI's help and its startup line no longer call TV apps clients with no `Origin`. What a Fire TV Stick sends is not checked yet.
-- **The Vega Virtual Device numbers come from a 20-line run.** The README's VVD column, the voice loop guide and `docs/vega-notes.md` give p50 / p95 over 20 scripted lines (`scripts/bench.mjs` over the hub's log). Speech end → reply audible: 166 / 303 ms, 20 of 20 replies played to the end.
+- **The Vega Virtual Device numbers come from a 20-line run.** The README's VVD column, the voice loop guide and `docs/vega-notes.md` give p50 / p95 over 20 scripted lines (`scripts/bench.mjs` over the hub's log). Speech end → reply audible: 166 / 303 ms, 20 of 20 replies played to the end. The README says these are the bridge's own path, with the offline rules and espeak: an agent's thinking time and cloud text-to-speech come on top.
 
 ## 0.4.0 (2026-10-20)
 
