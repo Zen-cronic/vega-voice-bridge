@@ -1,10 +1,5 @@
 # Changelog
 
-## Unreleased
-
-### Security
-- **The voice-loop example's local voices no longer read a reply as an option.** A reply of exactly `-f<path>` made espeak (or macOS `say`) read that file aloud, and the clip could then be fetched from `/tts/`. espeak now gets `--` before the text, and `say` gets a leading space when the text starts with `-`. Only the example changed; the npm package doesn't include it.
-
 ## 0.4.2 (2026-10-22)
 
 Renamed to vega-voice-bridge and published to npm. No behaviour or wire change beyond the names below: 0.4.1 and 0.4.2 clients and hubs work together both ways; protocol identifiers and the example apps' ids are unchanged. Old GitHub URLs redirect.
@@ -14,6 +9,9 @@ Renamed to vega-voice-bridge and published to npm. No behaviour or wire change b
 - **The CLI hub's bin is `vega-voice-bridge-hub`.** `tv-voice-bridge-hub` stays as an alias for the same file, so existing scripts keep working.
 - **The repository is `Zen-cronic/vega-voice-bridge`.** The release tarball is `vega-voice-bridge-<version>.tgz`, and the Vega example installs `vega-voice-bridge-0.4.2.tgz`.
 - **Log and error messages begin with `vega-voice-bridge`,** including the CLI's startup line (`vega-voice-bridge hub on ws://…`). Nothing on the wire changed: the phone page's `tv-voice-bridge-path` meta, the `TVB_HUB_URL` variable, and the example app's package name (`tv-voice-bridge-voiceloop`) and ids (`com.tvvoicebridge.loop`) keep their names.
+
+### Security
+- **The voice-loop example's local voices no longer read a reply as an option.** A reply of exactly `-f<path>` made espeak (or macOS `say`) read that file aloud, and the clip could then be fetched from `/tts/`. espeak now gets `--` before the text, and `say` gets a leading space when the text starts with `-`. Only the example changed, and the npm package doesn't include it; npm's 0.4.2 and the v0.4.2 tag are both built from 61935f5, which has the fix.
 
 ## 0.4.1 (2026-10-22)
 
