@@ -2,6 +2,8 @@
 
 Two-way voice for Fire TV (Vega) apps and AI agents: the phone listens, your agent answers, the TV shows it and says it. No phone app.
 
+**Watch it:** [the voice loop on a Fire TV Stick, real voice, 78 s](https://youtu.be/D6p50MpE-wE). Used in Spee: [3-minute demo](https://youtu.be/CN0ZML0aY7w) · https://spee.live
+
 [![CI](https://github.com/Zen-cronic/vega-voice-bridge/actions/workflows/ci.yml/badge.svg)](https://github.com/Zen-cronic/vega-voice-bridge/actions/workflows/ci.yml)
 
 Vega OS has no app-level speech-to-text or text-to-speech ([why, and why not Alexa or Matter](docs/design.md#why)). The phone in your hand already has a good mic and a recognizer, so the bridge carries its words to the TV, your handler answers, and the TV speaks back. Echo guard, barge-in, every hop timed.
@@ -115,7 +117,7 @@ With Amazon Bedrock (Nova Lite) in the loop, headless, N=1: final → reply audi
 npm install && npm run typecheck && npm test     # offline; CI runs Node 20, 22 and 24
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/releasing.md](docs/releasing.md). Used by Spee, a speaking coach on Bee (not public).
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/releasing.md](docs/releasing.md). Used by [Spee](https://github.com/Zen-cronic/spee), a speaking coach on Bee: https://spee.live.
 
 ## License
 
