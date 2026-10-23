@@ -1,0 +1,63 @@
+{
+  "label": "Fire TV Stick, real voice (desktop Chrome), Polly",
+  "n": 9,
+  "legs": {
+    "shownMs": {
+      "n": 9,
+      "min": 73,
+      "p50": 142,
+      "p95": 473,
+      "max": 473
+    },
+    "agentMs": {
+      "n": 9,
+      "min": 0,
+      "p50": 0,
+      "p95": 43,
+      "max": 43
+    },
+    "ttsMs": {
+      "n": 9,
+      "min": 1633,
+      "p50": 2233,
+      "p95": 2914,
+      "max": 2914
+    },
+    "sayToPlayingMs": {
+      "n": 9,
+      "min": 201,
+      "p50": 323,
+      "p95": 605,
+      "max": 605
+    },
+    "heardMs": {
+      "n": 9,
+      "min": 2071,
+      "p50": 2754,
+      "p95": 3419,
+      "max": 3419
+    },
+    "replyMs": {
+      "n": 9,
+      "min": 65,
+      "p50": 2425,
+      "p95": 5600,
+      "max": 5600
+    }
+  },
+  "states": {
+    "ended": 6,
+    "interrupted": 3
+  },
+  "said": [
+    "hello there",
+    "what time is it right now",
+    "can you hear me from across the room",
+    "okay the weather looks good for a walk tonight",
+    "okay please read this back to me all of it while I stay quiet and watch the phone",
+    "thank you that was clear",
+    "read this whole sentence Back to Me Slowly because I'm going to talk over you before you get to the end of it",
+    "stop next question please",
+    "thank you see you tomorrow"
+  ]
+}

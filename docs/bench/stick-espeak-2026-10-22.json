@@ -1,0 +1,58 @@
+{
+  "label": "Fire TV Stick, real voice (desktop Chrome), espeak (spare, incomplete)",
+  "n": 5,
+  "legs": {
+    "shownMs": {
+      "n": 5,
+      "min": 109,
+      "p50": 184,
+      "p95": 578,
+      "max": 578
+    },
+    "agentMs": {
+      "n": 5,
+      "min": 0,
+      "p50": 0,
+      "p95": 36,
+      "max": 36
+    },
+    "ttsMs": {
+      "n": 5,
+      "min": 4,
+      "p50": 492,
+      "p95": 738,
+      "max": 738
+    },
+    "sayToPlayingMs": {
+      "n": 5,
+      "min": 327,
+      "p50": 335,
+      "p95": 683,
+      "max": 683
+    },
+    "heardMs": {
+      "n": 5,
+      "min": 835,
+      "p50": 899,
+      "p95": 1150,
+      "max": 1150
+    },
+    "replyMs": {
+      "n": 5,
+      "min": 2149,
+      "p50": 2766,
+      "p95": 5172,
+      "max": 5172
+    }
+  },
+  "states": {
+    "ended": 5
+  },
+  "said": [
+    "hello there",
+    "what time is it",
+    "so the weather looks good for a walk tonight",
+    "please read this back to me all of it while stay quiet and watch the phone",
+    "thank you that was clear"
+  ]
+}

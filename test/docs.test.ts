@@ -74,16 +74,19 @@ describe('docs', () => {
     expect(readme).not.toMatch(/not run on a device/);
   });
 
-  it('no Fire TV Stick number is claimed before a measured run exists, and the first screen has an image', () => {
+  it('the Fire TV Stick column matches its measured run, and the first screen has an image', () => {
     const lines = read('README.md').split('\n');
-    const header = lines.findIndex((l) => l.startsWith('| Leg (hub clock) |') && l.trimEnd().endsWith('| Fire TV Stick, real phone |'));
+    const header = lines.findIndex((l) => l.startsWith('| Leg (hub clock) |') && l.trimEnd().endsWith('| Fire TV Stick, real voice, Amazon Polly, N=9 |'));
     expect(header).toBeGreaterThan(-1);
     const rows: string[] = [];
     for (let i = header + 2; lines[i]?.startsWith('| '); i++) rows.push(lines[i]!);
     expect(rows.length).toBeGreaterThanOrEqual(4);
-    // A stick number comes only from bench-phone.json after the run (scripts/stick-run.md), which changes this check
-    // in the same commit. A number typed into this column by hand fails here.
-    for (const row of rows) expect(row.split('|').at(-2)!.trim(), row).toBe('*not measured yet*');
+    // The stick column comes from docs/bench/stick-polly-2026-10-22.json. A number typed in by hand fails here.
+    const bench = JSON.parse(read('docs/bench/stick-polly-2026-10-22.json'));
+    const ms = (leg: string) => `${bench.legs[leg].p50.toLocaleString('en-US')} / ${bench.legs[leg].p95.toLocaleString('en-US')} ms`;
+    const cells = rows.map((row) => row.split('|').at(-2)!.trim().replace(/\*\*/g, ''));
+    expect(cells.slice(0, 3)).toEqual([ms('shownMs'), ms('sayToPlayingMs'), ms('heardMs')]);
+    expect(cells[3]).toMatch(new RegExp(`^${bench.states.ended} of ${bench.n}\\b`));
     expect(lines.slice(0, 15).some((l) => l.startsWith('!['))).toBe(true);
   });
 

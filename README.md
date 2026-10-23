@@ -6,7 +6,7 @@ Two-way voice for Fire TV (Vega) apps and AI agents: the phone listens, your age
 
 Vega OS has no app-level speech-to-text or text-to-speech ([why, and why not Alexa or Matter](docs/design.md#why)). The phone in your hand already has a good mic and a recognizer, so the bridge carries its words to the TV, your handler answers, and the TV speaks back. Echo guard, barge-in, every hop timed.
 
-**Measured on the Vega Virtual Device.** Version 0.3.5 has also run on a Fire TV Stick inside Spee, my speaking coach on Bee; that stick run was not measured.
+**Measured on the Vega Virtual Device and on a Fire TV Stick,** the stick inside Spee, my speaking coach on Bee.
 
 ![The voice loop on the Vega Virtual Device: the pairing QR, what was said, the answer, audio playing, and the measured legs](docs/vvd-voice-loop.png)
 
@@ -88,20 +88,22 @@ Details: [docs/api.md](docs/api.md). How it works (round trip, echo guard, recon
 
 The bridge's own path (phone final → TV → reply audio), with the example's offline rules and espeak; an agent's thinking time and cloud text-to-speech come on top.
 
-| Leg (hub clock) | Vega Virtual Device (SDK 0.24), scripted phone, N=20, p50 / p95 | Fire TV Stick, real phone |
+| Leg (hub clock) | Vega Virtual Device (SDK 0.24), scripted phone, N=20, p50 / p95 | Fire TV Stick, real voice, Amazon Polly, N=9 |
 |---|---|---|
-| speech end → answer on screen | 83 / 114 ms | *not measured yet* |
-| `screen.say` → audio playing | 154 / 182 ms | *not measured yet* |
-| **speech end → reply audible** | **166 / 303 ms** | *not measured yet* |
-| replies played to the end | 20 of 20 | *not measured yet* |
+| speech end → answer on screen | 83 / 114 ms | 142 / 473 ms |
+| `screen.say` → audio playing | 154 / 182 ms | 323 / 605 ms |
+| **speech end → reply audible** | **166 / 303 ms** | **2,754 / 3,419 ms** |
+| replies played to the end | 20 of 20 | 6 of 9 (3 cut off by barge-in, on purpose) |
 
-<!-- The right-hand column is filled only from bench-phone.json after a measured stick run (scripts/stick-run.md), never by hand. test/docs.test.ts fails if a number appears there before then. -->
+<!-- The right-hand column comes from docs/bench/stick-polly-2026-10-22.json, never by hand. test/docs.test.ts checks it against that file. -->
+
+On the stick, the audible time includes the text-to-speech step (an AWS CLI process start plus ffmpeg), so it isn't Polly's latency alone. With espeak instead, the stick heard its reply in 899 / 1,150 ms (N=5). Raw: [docs/bench/](docs/bench/).
 
 With Amazon Bedrock (Nova Lite) in the loop, headless, N=1: final → reply audio ready 1,992 ms, 1,851 ms of it the agent command. Method and caveats: [docs/measurement.md](docs/measurement.md).
 
 ## Known limits
 
-- **The Fire TV Stick is not measured yet.** [scripts/stick-run.md](scripts/stick-run.md) is the measured run, step by step.
+- **The Fire TV Stick run is small:** N=9, the voice from desktop Chrome rather than a phone. [scripts/stick-run.md](scripts/stick-run.md) is the run, step by step.
 - **The phone's browser does the recognizing** ([Browsers](docs/design.md#browsers)): Firefox has none, and `speech.end` is an estimate.
 - **The echo guard is a heuristic.** It trusts the TV's playback reports; room acoustics are not modelled.
 - **A 4-character code pairs anyone who can see the TV.** Guessing is throttled; there is no end-to-end encryption, so serve https/wss beyond your LAN ([SECURITY.md](SECURITY.md)).
