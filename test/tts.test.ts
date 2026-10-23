@@ -22,6 +22,17 @@ describe('the voice loop text-to-speech', () => {
   const dirs: string[] = [];
   afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })));
 
+  it('never lets the reply text be read as an engine option', async () => {
+    const calls: string[][] = [];
+    const run = async (cmd: string, args: string[]) => void calls.push([cmd, ...args]);
+    await ttsEngine({}, { run, os: 'linux' }).render('-f/etc/passwd', '/tmp/x', {});
+    expect(calls[0]!.slice(-2)).toEqual(['--', '-f/etc/passwd']);
+    await ttsEngine({}, { run, os: 'darwin' }).render('-f/etc/passwd', '/tmp/x', {});
+    expect(calls[1]!.at(-1)).toBe(' -f/etc/passwd');
+    await ttsEngine({}, { run, os: 'darwin' }).render('Hello there.', '/tmp/x', {});
+    expect(calls[2]!.at(-1)).toBe('Hello there.');
+  });
+
   it('picks say on macOS and espeak elsewhere by default', () => {
     expect(ttsEngine({}, { os: 'darwin' }).name).toBe('say');
     expect(ttsEngine({ TTS_VOICE: 'Ava' }, { os: 'darwin' }).name).toBe('say (Ava)');

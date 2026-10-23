@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Security
+- **The voice-loop example's local voices no longer read a reply as an option.** A reply of exactly `-f<path>` made espeak (or macOS `say`) read that file aloud, and the clip could then be fetched from `/tts/`. espeak now gets `--` before the text, and `say` gets a leading space when the text starts with `-`. Only the example changed; the npm package doesn't include it.
+
 ## 0.4.2 (2026-10-22)
 
 Renamed to vega-voice-bridge and published to npm. No behaviour or wire change beyond the names below: 0.4.1 and 0.4.2 clients and hubs work together both ways; protocol identifiers and the example apps' ids are unchanged. Old GitHub URLs redirect.

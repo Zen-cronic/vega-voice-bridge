@@ -13,6 +13,10 @@ import { join } from 'node:path';
 // `signal` (an AbortSignal) stops the command: createTts's close() uses it when the hub shuts down.
 const exec = (cmd, args, env, { signal } = {}) => new Promise((resolve, reject) => execFile(cmd, args, { env: { ...process.env, ...env }, signal }, (err, _o, stderr) => (err ? reject(new Error(`${cmd}: ${stderr || err.message}`.trim())) : resolve())));
 
+// The reply is the agent's text, so it must never be read as an option: a reply of "-f<path>" would make the
+// engine read that file aloud. espeak takes "--"; for say, a leading space keeps the text a plain argument.
+const asText = (text) => (text.startsWith('-') ? ` ${text}` : text);
+
 export function ttsEngine(env = process.env, { run = exec, os = platform() } = {}) {
   // Each engine lists the files a render may leave at `base` (outputs), so a failed render's files are removed by
   // name, without listing the cache.
@@ -42,9 +46,9 @@ export function ttsEngine(env = process.env, { run = exec, os = platform() } = {
   }
   if (os === 'darwin') {
     const voice = env.TTS_VOICE ? ['-v', env.TTS_VOICE] : [];
-    return { name: `say${env.TTS_VOICE ? ` (${env.TTS_VOICE})` : ''}`, outputs: wav, render: (text, base, o) => run('say', [...voice, '--file-format=WAVE', '--data-format=LEI16@22050', '-o', `${base}.wav`, text], undefined, o).then(() => `${base}.wav`) };
+    return { name: `say${env.TTS_VOICE ? ` (${env.TTS_VOICE})` : ''}`, outputs: wav, render: (text, base, o) => run('say', [...voice, '--file-format=WAVE', '--data-format=LEI16@22050', '-o', `${base}.wav`, asText(text)], undefined, o).then(() => `${base}.wav`) };
   }
-  return { name: 'espeak', outputs: wav, render: (text, base, o) => run('espeak', ['-s', '165', '-w', `${base}.wav`, text], undefined, o).then(() => `${base}.wav`) };
+  return { name: 'espeak', outputs: wav, render: (text, base, o) => run('espeak', ['-s', '165', '-w', `${base}.wav`, '--', text], undefined, o).then(() => `${base}.wav`) };
 }
 
 // Work files are named `<clip id>.<pid>-<instance token>-<n>.<ext>`, so two instances (in one process or two)
